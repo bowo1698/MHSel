@@ -4,7 +4,6 @@ run_bayesA <- function(matrices, split, gblup_varcomp, config, fold = 0) {
 
   W_train  <- matrices$W_train
   W_test   <- matrices$W_test
-  WtW_diag <- matrices$WtW_diag
 
   pheno_train_df <- split$train$phenotypes
   pheno_test_df  <- split$test$phenotypes
@@ -50,7 +49,6 @@ run_bayesA <- function(matrices, split, gblup_varcomp, config, fold = 0) {
   res <- masbayes::run_bayesa(
     w             = W_train,
     y             = y,
-    wtw_diag      = WtW_diag,
     X             = X_cov,
     marker_type   = config$marker_type %||% "auto",
     nu            = nu,

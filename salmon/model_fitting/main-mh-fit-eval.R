@@ -21,7 +21,7 @@ source("R/models/bayesR.R")
 source("R/models/bayesA.R")
 
 pipeline_start <- Sys.time()
-cat(sprintf("=== CV Pipeline started: %s ===\n", Sys.time()))
+cat(sprintf("=== Full-data Pipeline started: %s ===\n", Sys.time()))
 
 # ── 1. Load genotype ──────────────────────────────────────────
 load_hap_geno <- function(data_dir, n_chr, block_dir) {
@@ -41,27 +41,16 @@ hap_geno_current <- load_hap_geno(config$data_dir, config$n_chromosomes, config$
 
 cat(sprintf("Genotype loaded: %d individuals\n", nrow(hap_geno_current)))
 
-# ── 2. Split  ──────────────────────────────────────
+# ── 2. All individuals used for fitting ───────────────────────
 pedigree_current <- read_csv(
   file.path(config$data_dir, config$pedigree),
   show_col_types = FALSE
 ) %>% filter(population_type == config$population_type)
 
-set.seed(config$seed_split)
-split_ids <- pedigree_current %>%
-  group_by(family_id) %>%
-  summarise(
-    train_ids = list(sample(individual_id, round(n() * config$train_prop))),
-    test_ids  = list(setdiff(individual_id, train_ids[[1]])),
-    .groups   = "drop"
-  )
+train_ids <- pedigree_current$individual_id
+test_ids  <- character(0)
 
-current_train_ids <- unlist(split_ids$train_ids)
-test_ids          <- unlist(split_ids$test_ids)
-
-train_ids <- current_train_ids
-
-cat(sprintf("Split: train=%d | test=%d\n", length(train_ids), length(test_ids)))
+cat(sprintf("Full-data fit: train=%d (no test split)\n", length(train_ids)))
 
 # ── 3. Construct W matrix ─────────────────────────────────────────────────────
 # Full-data W matrix
@@ -70,8 +59,7 @@ hap_all           <- hap_geno_current %>%
 allele_freq_full  <- compute_allele_frequencies(hap_all %>% select(-individual_id), config)
 W_result_full     <- construct_W_matrix(hap_all %>% select(-individual_id),
                                         allele_freq_full, drop_baseline = config$drop_baseline)
-# Capture block_id BEFORE [, keep_full] and division — both drop matrix
-# attributes in R. masbayes v0.5.0 auto-detects the MH path via
+# Capture block_id BEFORE [, keep_full] and division
 # attr(W, "block_id"); the attr must be present when run_bayesr(map = ...)
 # is called downstream in the scenario loop.
 block_id_full_orig <- attr(W_result_full$W_ah, "block_id")
@@ -182,20 +170,6 @@ cat(sprintf("QTL loaded: %d SNP QTL | %d MH block QTL | %d HAP block QTL\n",
             length(qtl_snp_ids), length(qtl_mh_blocks), length(qtl_hap_blocks)))
 
 # ── GWAS map (MH): per-iter coords from this iter's mh_info_ld_haploblock ────
-# PLAN.md originally specified G0-founder shared coords, but Bunya verification
-# showed the G0 file at raw_data/mh_info_ld_haploblock_G0/stats/ is malformed
-# (read_csv parses 1 row without a chr column). Per-iter coords at
-# ${DATA_DIR_G1}/mh_info_ld_haploblock/stats/microhaplotype_coordinates.csv is
-# the usable source — count and per-chr distribution match W exactly
-# (27,955 blocks across 29 chr in salmon panel).
-#
-# Sim hap_geno uses the same column naming convention as oyster:
-# hap_<chr>_<block_in_chr> with two adjacent identical columns per block.
-# masbayes derives attr(W, "block_id") from these column names, which uses a
-# different namespace than the coords CSV (which uses linear `blk<N>`). We
-# translate W's block_id to the coords namespace by chr-aware positional
-# match: k-th W block of chr C ↔ k-th coords row of chr C. Same pattern as
-# oysters/main_mh.R; chr-aware (not flat-zip) so per-chr drift fails loud.
 gwas_enabled <- isTRUE(config$gwas$enabled)
 if (gwas_enabled) {
   block_id_W_full <- attr(W_full, "block_id")
@@ -274,7 +248,6 @@ for (sc in names(config$scenarios)) {
     A_train         = A_full,
     A_combined      = A_full,
     k_ah            = k_ah_full,
-    WtW_diag        = colSums(W_full^2),
     train_ids       = as.character(hap_all$individual_id),
     test_ids        = character(0),
     g_label         = "mh_add"
@@ -326,6 +299,7 @@ for (sc in names(config$scenarios)) {
         pip           = bayesR_full$pip,
         pip_block     = bayesR_full$pip_block,
         max_pip_block = max_pip_block,
+        pip_class     = bayesR_full$pip_class,
         gwas          = bayesR_full$gwas,
         gwas_meta     = bayesR_full$gwas_meta,
         marker_type   = "mh",
@@ -354,147 +328,59 @@ for (sc in names(config$scenarios)) {
     bayesA = list(GEBV = bayesA_full$predictions$train, h2 = bayesA_full$varcomp$h2)
   )
 
-  WtW_diag <- colSums(W_train^2)
-
-  matrices <- list(
-    W_train         = W_train,
-    W_test          = W_test,
-    allele_info     = allele_info_keep,
-    dropped_alleles = W_result_train$dropped_alleles,
-    A_train         = A_train,
-    A_combined      = A_combined,
-    k_ah            = k_ah,
-    WtW_diag        = WtW_diag,
-    train_ids       = as.character(train_ids),
-    test_ids        = as.character(test_ids),
-    g_label         = "mh_add"
-  )
-
-  split <- list(
-    train = list(
-      phenotypes = pheno_train,
-      haplotypes = hap_train
-    ),
-    test = list(
-      phenotypes = pheno_test,
-      haplotypes = hap_test
-    )
-  )
-
-  # Run GBLUP once for all
-  cat("  Running GBLUP...\n")
-  gblup_res <- run_gblup(matrices, split, config)
-  gblup_vc  <- gblup_res$varcomp
-  cat(sprintf("    [cv]   gblup  | train: acc=%.4f bias=%.4f | test: acc=%.4f bias=%.4f | h2=%.3f\n",
-    cor(gblup_res$predictions$train, pheno_train$tbv, use="complete.obs"),
-    coef(lm(pheno_train$tbv ~ gblup_res$predictions$train))[2],
-    cor(gblup_res$predictions$test, pheno_test$tbv, use="complete.obs"),
-    coef(lm(pheno_test$tbv ~ gblup_res$predictions$test))[2],
-    gblup_vc$h2))
-
+  # ── Save full-data fit per model ──
   for (model_name in c("gblup", "bayesR", "bayesA")) {
+    dir.create(file.path(out_dir, model_name),
+               recursive = TRUE, showWarnings = FALSE)
 
-    dir.create(file.path(out_dir, model_name), recursive = TRUE, showWarnings = FALSE)
-
-    if (model_name == "gblup") {
-      GEBV_test <- gblup_res$predictions$test
-      h2        <- gblup_vc$h2
-
-    } else if (model_name == "bayesR") {
-      cat("  Running BayesR...\n")
-      res       <- run_bayesR(matrices, split, gblup_vc, config, fold = 0)
-      GEBV_test <- res$predictions$test
-      h2        <- res$varcomp$h2
-      cat(sprintf("    [cv]   bayesR | train: acc=%.4f bias=%.4f | test: acc=%.4f bias=%.4f | h2=%.3f\n",
-        cor(res$predictions$train, pheno_train$tbv, use="complete.obs"),
-        coef(lm(pheno_train$tbv ~ res$predictions$train))[2],
-        cor(GEBV_test, pheno_test$tbv, use="complete.obs"),
-        coef(lm(pheno_test$tbv ~ GEBV_test))[2],
-        h2))
-
-    } else {
-      cat("  Running BayesA...\n")
-      res       <- run_bayesA(matrices, split, gblup_vc, config, fold = 0)
-      GEBV_test <- res$predictions$test
-      h2        <- res$varcomp$h2
-      cat(sprintf("    [cv]   bayesA | train: acc=%.4f bias=%.4f | test: acc=%.4f bias=%.4f | h2=%.3f\n",
-        cor(res$predictions$train, pheno_train$tbv, use="complete.obs"),
-        coef(lm(pheno_train$tbv ~ res$predictions$train))[2],
-        cor(GEBV_test, pheno_test$tbv, use="complete.obs"),
-        coef(lm(pheno_test$tbv ~ GEBV_test))[2],
-        h2))
-    }
-
-    acc  <- cor(GEBV_test, pheno_test$tbv, use = "complete.obs")
-    bias <- coef(lm(pheno_test$tbv ~ GEBV_test))[2]
-    rmse <- sqrt(mean((GEBV_test - pheno_test$tbv)^2, na.rm = TRUE))
-
-    # Training accuracy
-    GEBV_train <- if (model_name == "gblup") {
-      gblup_res$predictions$train
-    } else {
-      res$predictions$train
-    }
-    
-    acc_train  <- cor(GEBV_train, pheno_train$tbv, use = "complete.obs")
-    bias_train <- coef(lm(pheno_train$tbv ~ GEBV_train))[2]
-    rmse_train <- sqrt(mean((GEBV_train - pheno_train$tbv)^2, na.rm = TRUE))
-
-    GEBV_full  <- full_results[[model_name]]$GEBV
-    h2_full    <- full_results[[model_name]]$h2
-    acc_full   <- cor(GEBV_full, pheno_full$tbv, use = "complete.obs")
-    bias_full  <- coef(lm(pheno_full$tbv ~ GEBV_full))[2]
-    rmse_full  <- sqrt(mean((GEBV_full - pheno_full$tbv)^2, na.rm = TRUE))
+    GEBV <- full_results[[model_name]]$GEBV
+    h2   <- full_results[[model_name]]$h2
+    acc  <- cor(GEBV, pheno_full$tbv, use = "complete.obs")
+    bias <- coef(lm(pheno_full$tbv ~ GEBV))[2]
+    rmse <- sqrt(mean((GEBV - pheno_full$tbv)^2, na.rm = TRUE))
 
     results_all <- tibble(
-      individual_id    = pheno_test$individual_id,
-      tbv              = pheno_test$tbv,
-      GEBV             = GEBV_test,
+      individual_id    = pheno_full$individual_id,
+      tbv              = pheno_full$tbv,
+      GEBV             = GEBV,
       scenario         = sc,
       model            = model_name,
       marker           = "mh",
-      split            = "test",
       accuracy         = acc,
       bias             = bias,
       rmse             = rmse,
       h2               = h2,
-      n_train          = n_train,
-      n_test           = nrow(pheno_test),
-      h2_full          = h2_full,
-      acc_full         = acc_full,
-      bias_full        = bias_full,
-      rmse_full        = rmse_full,
+      n_train          = nrow(pheno_full),
       grm_mean_diag    = grm_stats$mean_diag,
       grm_sd_diag      = grm_stats$sd_diag,
       grm_mean_offdiag = grm_stats$mean_offdiag,
       grm_sd_offdiag   = grm_stats$sd_offdiag
     )
 
-    markers_cv <- if (model_name == "gblup") NULL else res$markers
-    markers_full_mod <- if (model_name == "gblup") NULL else if (model_name == "bayesR") bayesR_full$markers else bayesA_full$markers
-
-    # QTL recovery — pass causal SNPs for scenario-specific positional matching
-    # (MH×MH-block path uses these; other paths ignore the param)
+    markers <- switch(model_name,
+      gblup  = NULL,
+      bayesR = bayesR_full$markers,
+      bayesA = bayesA_full$markers
+    )
     causal_snps_sc <- if (sc %in% names(qtl_block_effects_lookup))
                         extract_causal_snps(qtl_block_effects_lookup[[sc]]) else NULL
-    qtl_recovery_cv   <- compute_qtl_recovery(markers_cv, sc, qtl_snp_ids, qtl_mh_blocks, qtl_hap_blocks, snp_meta, "mh", mh_coords = NULL, hap_coords = hap_coords, qtl_block_causal_snps = causal_snps_sc)
-    qtl_recovery_full <- compute_qtl_recovery(markers_full_mod, sc, qtl_snp_ids, qtl_mh_blocks, qtl_hap_blocks, snp_meta, "mh", mh_coords = NULL, hap_coords = hap_coords, qtl_block_causal_snps = causal_snps_sc)
-
+    qtl_recovery <- compute_qtl_recovery(markers, sc, qtl_snp_ids,
+                                         qtl_mh_blocks, qtl_hap_blocks,
+                                         snp_meta, "mh",
+                                         mh_coords = NULL,
+                                         hap_coords = hap_coords,
+                                         qtl_block_causal_snps = causal_snps_sc)
     diagnostics_fit <- switch(model_name,
       gblup  = NULL,
       bayesR = bayesR_full$diagnostics,
       bayesA = bayesA_full$diagnostics
     )
-
     runtime_fit <- switch(model_name,
       gblup  = rt_gblup,
       bayesR = rt_bayesR,
       bayesA = rt_bayesA
     )
 
-    # ── MCMC diagnostic Rds (separate from results_all.rds; opt-in) ──
-    # Wrapper attaches $mcmc_diag if config$mcmc_diag$enabled = TRUE.
-    # Saved separately so the results_all.rds contract stays unchanged.
     mcmc_diag_obj <- switch(model_name,
       gblup  = NULL,
       bayesR = bayesR_full$mcmc_diag,
@@ -508,30 +394,26 @@ for (sc in names(config$scenarios)) {
       mcmc_diag_obj$meta$iter        <- iter_label_mcmc
       mcmc_diag_obj$meta$generation  <- gen_label_mcmc
       mcmc_diag_obj$meta$marker_type <- "mh"
-      saveRDS(
-        mcmc_diag_obj,
-        file.path(out_dir, model_name, "mcmc_diag.rds")
-      )
-      cat(sprintf("    [%s] mcmc_diag | saved: %s\n", model_name,
-                  file.path(out_dir, model_name, "mcmc_diag.rds")))
+      saveRDS(mcmc_diag_obj,
+              file.path(out_dir, model_name, "mcmc_diag.rds"))
+      cat(sprintf("    [%s] mcmc_diag | saved\n", model_name))
     }
 
     saveRDS(
       list(
-        predictions = results_all,
-        markers     = markers_cv,
-        markers_full = markers_full_mod,
-        qtl_recovery = qtl_recovery_cv,
-        qtl_recovery_full = qtl_recovery_full,
-        diagnostics_fit = diagnostics_fit,
-        runtime_fit = runtime_fit
+        predictions       = results_all,
+        markers           = markers,
+        markers_full      = markers,
+        qtl_recovery      = qtl_recovery,
+        qtl_recovery_full = qtl_recovery,
+        diagnostics_fit   = diagnostics_fit,
+        runtime_fit       = runtime_fit
       ),
       file.path(out_dir, model_name, "results_all.rds")
     )
-    
-    cat(sprintf("  %s | full: acc=%.4f bias=%.4f h2=%.3f | train: acc=%.4f bias=%.4f rmse=%.4f | test: acc=%.4f bias=%.4f rmse=%.4f\n",
-                model_name, acc_full, bias_full, h2_full,
-                acc_train, bias_train, rmse_train, acc, bias, rmse))
+
+    cat(sprintf("  %s | acc=%.4f bias=%.4f rmse=%.4f h2=%.3f\n",
+                model_name, acc, bias, rmse, h2))
   }
 
   cat(sprintf("Scenario %s done in %.1f mins\n", sc,

@@ -5,7 +5,6 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
 
   W_train  <- matrices$W_train
   W_test   <- matrices$W_test
-  WtW_diag <- matrices$WtW_diag
 
   pheno_train <- split$train$phenotypes
   pheno_test  <- split$test$phenotypes
@@ -37,7 +36,6 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
   res <- masbayes::run_bayesr(
     w             = W_train,
     y             = y,
-    wtw_diag      = WtW_diag,
     marker_type   = config$marker_type %||% "auto",
     pi_vec        = pi_vec,
     sigma2_e_init = sigma2_e_init,

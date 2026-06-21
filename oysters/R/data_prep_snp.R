@@ -202,7 +202,6 @@ construct_matrices <- function(train_data, test_data, config) {
     A_train    = G_train,
     A_combined = G_full,
     k_ah       = k_grm,
-    WtW_diag   = colSums(W_train^2),
     train_ids  = train_ids,
     test_ids   = test_ids,
     g_label    = "snp_add",
