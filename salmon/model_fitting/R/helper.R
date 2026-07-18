@@ -355,7 +355,9 @@ compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
     unname(coda::geweke.diag(coda::as.mcmc(x))$z)
   })
   hw <- lapply(scalar_chains, function(x) {
-    h <- coda::heidel.diag(coda::as.mcmc(x))
+    # heidel.diag aborts on degenerate chains (I=Inf -> pcramer(Inf)=NaN); NA-fallback keeps the fit
+    h <- tryCatch(coda::heidel.diag(coda::as.mcmc(x)), error = function(e) NULL)
+    if (is.null(h)) return(list(pvalue = NA_real_, passed = NA))
     list(pvalue = unname(h[1L, "pvalue"]),
          passed = as.logical(h[1L, "stest"]))
   })
@@ -378,7 +380,10 @@ compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
       unname(coda::geweke.diag(coda::as.mcmc(x))$z)
     })
     hw$pi <- lapply(seq_len(ncol(pi_matrix)), function(j) {
-      h <- coda::heidel.diag(coda::as.mcmc(pi_matrix[, j]))
+      # heidel.diag aborts on degenerate chains (I=Inf -> pcramer(Inf)=NaN); NA-fallback keeps the fit
+      h <- tryCatch(coda::heidel.diag(coda::as.mcmc(pi_matrix[, j])),
+                    error = function(e) NULL)
+      if (is.null(h)) return(list(pvalue = NA_real_, passed = NA))
       list(pvalue = unname(h[1L, "pvalue"]),
            passed = as.logical(h[1L, "stest"]))
     })

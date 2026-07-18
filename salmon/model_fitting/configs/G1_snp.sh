@@ -22,9 +22,9 @@ module load r/4.4.0-gfbf-2023a
 ITER=$SLURM_ARRAY_TASK_ID
 ITERPAD=$(printf '%02d' $ITER)
 SEED=$((ITER * 42))
-MODEL="/scratch/user/aguswibowo/Research/predict_salmon_forward/model_run/test5"
+MODEL="/scratch/user/aguswibowo/Research/predict_salmon_forward/model_run/test6"
 DATA_DIR_G1="/scratch/user/aguswibowo/Research/simulation_forward2/output_G1/iter${ITERPAD}"
-OUT_BASE="/scratch/user/aguswibowo/Research/predict_salmon_forward/output2/predict_within_gen_G1_full_test5/iter${ITERPAD}"
+OUT_BASE="/scratch/user/aguswibowo/Research/predict_salmon_forward/output2/predict_within_gen_G1_full_test6/iter${ITERPAD}"
 
 SCENARIOS_G1='list(
     S1_equal   = "pheno_S1_G1.csv",
@@ -48,8 +48,6 @@ config <- list(
   population_type     = "reference",
   min_allele_freq     = 0.01,
   callrate_threshold  = 0.8,
-  seed_split          = ${SEED},
-  train_prop          = 0.8,
   seed                = 123,
   marker_type         = "snp",
   snp_encoding        = "zscore",
@@ -57,7 +55,7 @@ config <- list(
   n_burn              = 25000,
   n_thin              = 10,
   bayesR = list(
-    pi        = c(0.95, 0.02, 0.02, 0.01),
+    pi        = c(0.90, 0.05, 0.03, 0.02),
     var_class = c(0, 0.0001, 0.001, 0.01),
     prior_df  = list(residual = -1, genetic = 2)
   ),
@@ -65,10 +63,10 @@ config <- list(
   save_mcmc_samples   = FALSE,
   mcmc_diag           = list(enabled = TRUE, k_window = 20L),
   scenarios           = ${SCENARIOS_G1},
-  qtl_dir             = "/scratch/user/aguswibowo/Research/simulation_forward/output_G1/rds",
-  snp_map_file        = "/scratch/user/aguswibowo/Research/simulation_forward/raw_data/salmon_60k_map_final.txt",
-  mh_coords_file      = "/scratch/user/aguswibowo/Research/simulation_forward/raw_data/mh_info_ld_haploblock_G0/stats/microhaplotype_coordinates.csv",
-  hap_coords_file     = "/scratch/user/aguswibowo/Research/simulation_forward/raw_data/all_info_haploblock_G0/stats/microhaplotype_coordinates.csv",
+  qtl_dir             = "/scratch/user/aguswibowo/Research/simulation_forward2/output_G1/rds",
+  snp_map_file        = "/scratch/user/aguswibowo/Research/simulation_forward2/raw_data/salmon_60k_map_final.txt",
+  mh_coords_file      = "/scratch/user/aguswibowo/Research/simulation_forward2/raw_data/mh_info_ld_haploblock_G0/stats/microhaplotype_coordinates.csv",
+  hap_coords_file     = "/scratch/user/aguswibowo/Research/simulation_forward2/raw_data/all_info_haploblock_G0/stats/microhaplotype_coordinates.csv",
   gwas                = list(enabled = TRUE, windsize = 500e3)
 )
 EOF

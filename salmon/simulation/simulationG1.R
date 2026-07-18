@@ -23,11 +23,6 @@ RARE_PROP          <- 0.30
 MAF_RARE_MIN       <- 0.01
 MAF_RARE_MAX       <- 0.05
 
-# Rare-variant engineering at founders (panel is MAF >= 0.05 pre-filter)
-N_RARE_ENGINEER    <- 200L
-N_RARE_CARRIERS    <- 4L     # MAF = 4 / 160 = 0.025
-ENGINEER_SEED      <- 456L
-
 dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 RDS_DIR  <- file.path(OUT, "rds")
 ITER_DIR <- file.path(OUT, sprintf("iter%02d", ITER))
@@ -43,21 +38,7 @@ haplo_mat <- do.call(cbind, lapply(1:ncol(gt), function(i) {
   matrix(as.integer(m), nrow = nrow(m), ncol = 2)
 }))
 
-# Engineer rare variants in founder haplotypes. Panel pre-filtered to MAF >= 0.05,
-# so no natural rare variants exist. We pick N_RARE_ENGINEER random SNP positions,
-# zero out all founder allele-copies, then set exactly N_RARE_CARRIERS copies to 1.
-local({
-  set.seed(ENGINEER_SEED)
-  n_alleles <- ncol(haplo_mat)
-  if (N_RARE_CARRIERS >= n_alleles)
-    stop("N_RARE_CARRIERS must be < 2 * n_founders")
-  rare_idx <- sample(seq_len(nrow(haplo_mat)), N_RARE_ENGINEER, replace = FALSE)
-  for (i in rare_idx) {
-    haplo_mat[i, ] <<- 0L
-    haplo_mat[i, sample(seq_len(n_alleles), N_RARE_CARRIERS, replace = FALSE)] <<- 1L
-  }
-  engineered_rare_vcf_idx <<- rare_idx
-})
+# Genotype used as-is: panel already carries natural rare variants (MAF < 0.05).
 
 gen_map      <- data.frame(chr = as.integer(vcf@fix[, "CHROM"]),
                             pos = as.integer(vcf@fix[, "POS"]) / 1e6)
@@ -85,8 +66,6 @@ snp_meta <- tibble(snp_id     = vcf_fix$ID,
                    global_idx = seq_len(nrow(vcf_fix))) %>%
             arrange(chr, pos)
 n_snp    <- nrow(snp_meta)
-
-engineered_rare_snp_ids <- vcf_fix$ID[engineered_rare_vcf_idx]
 
 # G0 SNP allele frequencies + MAF for rare/common stratification
 snp_freq_g0 <- setNames(rowMeans(haplo_mat), vcf_fix$ID)[snp_meta$snp_id]
@@ -429,15 +408,11 @@ if (ITER == 1) {
   saveRDS(snp_meta,               file.path(RDS_DIR, "snp_meta.rds"))
   saveRDS(snp_freq_g0,            file.path(RDS_DIR, "snp_freq_g0.rds"))
   saveRDS(maf_g0,                 file.path(RDS_DIR, "maf_g0.rds"))
-  saveRDS(engineered_rare_snp_ids, file.path(RDS_DIR, "engineered_rare_snp_ids.rds"))
   saveRDS(list(
     K_BLK_QTL       = K_BLK_QTL,
     RARE_PROP       = RARE_PROP,
     MAF_RARE_MIN    = MAF_RARE_MIN,
     MAF_RARE_MAX    = MAF_RARE_MAX,
-    N_RARE_ENGINEER = N_RARE_ENGINEER,
-    N_RARE_CARRIERS = N_RARE_CARRIERS,
-    ENGINEER_SEED   = ENGINEER_SEED,
     n_qtl_rare      = n_qtl_rare,
     n_qtl_common    = n_qtl_common
   ), file.path(RDS_DIR, "qtl_design_params.rds"))
