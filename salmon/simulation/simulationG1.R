@@ -38,7 +38,7 @@ haplo_mat <- do.call(cbind, lapply(1:ncol(gt), function(i) {
   matrix(as.integer(m), nrow = nrow(m), ncol = 2)
 }))
 
-# Genotype used as-is: panel already carries natural rare variants (MAF < 0.05).
+# Genotype as-is: the panel already carries natural rare variants (MAF < 0.05).
 
 gen_map      <- data.frame(chr = as.integer(vcf@fix[, "CHROM"]),
                             pos = as.integer(vcf@fix[, "POS"]) / 1e6)
@@ -58,8 +58,8 @@ haplo_list <- lapply(chrs_ordered, function(c) {
 founderPop <- newMapPop(genMap = genMap_list, haplotypes = haplo_list, inbred = FALSE)
 
 vcf_fix  <- as.data.frame(getFIX(vcf))
-# global_idx preserves VCF row order through arrange — needed to index haplo_mat
-# by snp_id when extracting per-block haplotype patterns.
+# global_idx preserves VCF row order through arrange, so haplo_mat can still
+# be indexed by snp_id when extracting per-block haplotype patterns.
 snp_meta <- tibble(snp_id     = vcf_fix$ID,
                    chr        = as.integer(vcf_fix$CHROM),
                    pos        = as.integer(vcf_fix$POS),
@@ -138,16 +138,15 @@ qtl_mh_blocks  <- c(sample(mh_blk_pools$rare_containing,  n_qtl_rare,   replace 
 qtl_hap_blocks <- c(sample(hap_blk_pools$rare_containing, n_qtl_rare,   replace = FALSE),
                     sample(hap_blk_pools$common_only,     n_qtl_common, replace = FALSE))
 
-# Encode K-SNP haplotype as integer code (binary): sum(allele_k * 2^(k-1)).
-# Stable across G0/G1+ as long as SNP positions preserved in snp_meta order.
+# Encode a K-SNP haplotype as sum(allele_k * 2^(k-1)).
+# Stable across generations while snp_meta order is preserved.
 encode_block_haplotype <- function(hap_vec) {
   as.integer(sum(as.integer(hap_vec) * 2L^(seq_along(hap_vec) - 1L)))
 }
 
-# Define haplotype-additive QTL per block: derive segregating haplotype-alleles
-# at G0, pick K causal alleles, assign β. TBV = Σ β_a · count(allele_a in ind).
-# Captures cis/trans configurations: AD and BC carry different haplotype-alleles
-# and so receive different TBV contributions even when SNP dosages are identical.
+# Haplotype-additive QTL per block: take segregating haplotype-alleles at G0,
+# pick K causal ones, assign β. TBV = Σ β_a · count(allele_a in ind).
+# This captures cis/trans — AD and BC differ in TBV at identical SNP dosages.
 define_block_qtl_haplotype <- function(block_ids, block_snp_map, snp_meta_idx_df,
                                        haplo_mat_g0, k_alleles_per_block,
                                        type = "equal", is_rare_named = NULL) {
@@ -190,7 +189,7 @@ define_block_qtl_haplotype <- function(block_ids, block_snp_map, snp_meta_idx_df
     is_rare_allele <- allele_freqs_all >= MAF_RARE_MIN &
                       allele_freqs_all < MAF_RARE_MAX
 
-    # Force 1 rare haplotype-allele as causal when block has rare alleles.
+    # Force one rare haplotype-allele causal when the block has any.
     if (!is.null(is_rare_named) && any(is_rare_allele) && k_actual >= 2L) {
       rare_idx    <- which(is_rare_allele)
       forced_rare <- if (length(rare_idx) == 1L) rare_idx
@@ -232,8 +231,7 @@ define_block_qtl_haplotype <- function(block_ids, block_snp_map, snp_meta_idx_df
   res
 }
 
-# Reorder VCF haplo_mat rows to match sorted snp_meta. After this,
-# haplo_mat_sorted row i corresponds to snp_meta$snp_id[i].
+# Reorder haplo_mat rows to match sorted snp_meta, so row i is snp_meta$snp_id[i].
 haplo_mat_sorted <- haplo_mat[snp_meta$global_idx, , drop = FALSE]
 
 qtl_s3_effects <- define_block_qtl_haplotype(qtl_mh_blocks,  mh_snps,  snp_meta_idx_df,
@@ -257,9 +255,8 @@ calc_tbv_snp <- function(dosage_mat, qtl_effects) {
   as.vector(tbv - mean(tbv))
 }
 
-# Haplotype-additive block TBV. haplo_mat is n_snp × (2*n_ind), in sorted
-# snp_meta order. For each block, encode haplotype at causal SNP positions,
-# count copies of each causal allele per individual, multiply by β.
+# Block TBV. haplo_mat is n_snp × (2*n_ind) in sorted snp_meta order. Per
+# block: encode the haplotype at causal SNPs, count copies per individual, × β.
 calc_tbv_block <- function(haplo_mat, qtl_block_list) {
   n_alleles_total <- ncol(haplo_mat)
   if (n_alleles_total %% 2L != 0L)
@@ -419,12 +416,10 @@ if (ITER == 1) {
 }
 
 # ── 7. Validation log: confirm block-level haplotype-additive design ─────────
-# For each QTL block in S3-S6, fit (a) SNP-additive lm(tbv_blk ~ block_SNPs),
-# (b) MH-additive lm(tbv_blk ~ count_per_segregating_allele_in_block). R²_MH
-# ≈ 1.0 confirms TBV is haplotype-additive by construction. R²_SNP < 1.0 shows
-# SNP-additive is biased — block-level signal is spread across multiple SNPs.
-# Gap scales with #haplotype-alleles per block (h): biallelic blocks have
-# gap ≈ 0, multi-allelic blocks (h ≥ 5) show substantial gap.
+# Per QTL block in S3-S6, fit SNP-additive vs MH-additive lm on tbv_blk.
+# R²_MH ≈ 1.0 confirms TBV is haplotype-additive by construction; R²_SNP < 1.0
+# shows the block signal is spread across SNPs. The gap grows with the number
+# of haplotype-alleles h: ≈ 0 when biallelic, substantial at h ≥ 5.
 cat("\n=== Validation iter ", ITER, ": block-level QTL vs SNP-additive bias ===\n", sep = "")
 
 per_block_r2 <- function(qtl_block_list, haplo_mat_g, dosage_mat) {

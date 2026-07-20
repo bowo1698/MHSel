@@ -75,7 +75,7 @@ if (file.exists(full_fit_path)) {
   cat("GRM full | mean_diag:", round(grm_stats_full$mean_diag, 4),
       "| mean_offdiag:", round(grm_stats_full$mean_offdiag, 4), "\n\n")
 
-  # Helper: append AUC_train to full-fit log line for binary trait
+  # Append AUC_train to the full-fit log line (binary only)
   full_auc_tag <- function(res) {
     if (!is_binary) return("")
     sprintf(" | AUC_train=%.4f", res$accuracy$auc_train %||% NA_real_)
@@ -93,17 +93,7 @@ if (file.exists(full_fit_path)) {
   config_full <- config
   config_full$save_mcmc_samples <- TRUE
 
-  # ── GWAS map (MH): the single per-trait file at config$coords_mh_file ──
-  # Block coordinates are population-level metadata, not iter-specific.
-  # masbayes::construct_wah_matrix derives attr(W, "block_id") from the
-  # column-name convention of hap_geno_<chr> (e.g. "hap_<chr>_<block_in_chr>"),
-  # which uses a DIFFERENT namespace than maspipeline's coords CSV (which
-  # uses "blk<N>" linear across all chromosomes). We translate W's block_id
-  # into the coords namespace by matching position within each chromosome:
-  # the k-th W block of chr C ↔ the k-th coords row of chr C. The
-  # alternative — translating coords to W's namespace — would force
-  # downstream consumers (gwas_full.rds, plot tools) to learn the W
-  # convention, which is unhelpful.
+  # ── GWAS map (MH): per-trait file at config$coords_mh_file ──
   gwas_enabled <- isTRUE(config$gwas$enabled)
   if (gwas_enabled) {
     block_id_W_full <- attr(matrices_full$W_train, "block_id")
@@ -115,7 +105,7 @@ if (file.exists(full_fit_path)) {
       select(block_id, chr, start_pos, end_pos) %>%
       mutate(chr = as.integer(chr))
 
-    # Build chr-aware positional translation from W namespace → coords namespace.
+    # Chr-aware positional translation: W namespace → coords namespace.
     unique_w_blocks <- unique(block_id_W_full)
     w_block_chr     <- as.integer(sub("^hap_(\\d+)_\\d+$", "\\1", unique_w_blocks))
     if (any(is.na(w_block_chr))) {
@@ -160,9 +150,7 @@ if (file.exists(full_fit_path)) {
               bayesR_full$varcomp$h2, bayesR_full$accuracy$train_pheno,
               full_auc_tag(bayesR_full)))
 
-  # ── GWAS Rds (separate from full_fit.rds per Rds-contract policy) ──
-  # max-per-block PIP avoids pip_block's union-statistic inflation on small
-  # blocks. See masbayes/examples/04_gwas.R:130-138 for the discussion.
+  # ── GWAS Rds (kept separate from full_fit.rds) ──
   if (gwas_enabled && !is.null(bayesR_full$pip)) {
     max_pip_block <- vapply(map_mh_gwas$block_id, function(b) {
       idx <- which(block_id_W_full == b)
@@ -195,9 +183,7 @@ if (file.exists(full_fit_path)) {
     bayesR = bayesR_full$varcomp$h2
   )
 
-  # Both models fit in a single full_fit. Store diagnostics/runtime as
-  # named lists per model (oysters pipeline differs from simulation, where a
-  # for-loop selects one model_name per iteration).
+  # Both models fit in a single full_fit.
   diagnostics_fit <- list(
     gblup  = NULL,
     bayesR = bayesR_full$diagnostics
@@ -277,7 +263,7 @@ all_results <- foreach(
     matrices <- construct_matrices(split$train, split$test, allele_freq, config) # R/matrix_construction.R
     cat("W_train:", dim(matrices$W_train), "| k_ah =", round(matrices$k_ah, 4), "\n\n")
 
-    # Helper: append AUC to per-fold log line for binary trait
+    # Append AUC to the per-fold log line (binary only)
     auc_tag <- function(res) {
       if (!is_binary) return("")
       sprintf(" | AUC_train=%.4f | AUC_test=%.4f",
@@ -352,10 +338,8 @@ if (any(failed)) {
 }
 cat("Completed", length(all_results), "/", config$k_folds, "folds\n\n")
 
-# Summary log per model
-# - Continuous: train/test = Pearson r on phenotype scale (label: r_MP)
-# - Binary: train/test = Pearson r on observed (probability) scale, plus
-#   separate AUC_train/AUC_test from rank-based ROC.
+# Summary log per model. Continuous: Pearson r on phenotype scale (r_MP).
+# Binary: Pearson r on probability scale, plus separate AUC from rank-based ROC.
 summarize_model <- function(results, model_name) {
   is_bin <- !is.null(config$response_type) && config$response_type == "binary"
   vals <- Filter(Negate(is.null), lapply(results, function(x) {
@@ -424,10 +408,6 @@ build_summary <- function(results, model_name) {
     h2_mean        = mean(sapply(vals, function(v) v$varcomp$h2),           na.rm=TRUE),
     h2_sd          = sd(sapply(vals,   function(v) v$varcomp$h2),           na.rm=TRUE),
     h2_full        = h2_full[[model_name]],
-    # diagnostics$mean_ess can be NULL for folds that skip diagnostics (e.g.
-    # GBLUP) or whose Bayesian fit returned without an ESS field; sapply on
-    # mixed NULL/numeric collapses to a list and trips mean.default. vapply
-    # with NA_real_ default keeps the output type numeric and the log clean.
     ess_mean       = mean(vapply(vals, function(v) {
                             e <- v$diagnostics$mean_ess
                             if (is.null(e) || !is.numeric(e)) NA_real_ else as.numeric(e)[1]

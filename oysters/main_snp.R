@@ -88,11 +88,10 @@ if (file.exists(full_fit_path)) {
   config_full <- config
   config_full$save_mcmc_samples <- TRUE
 
-  # ── GWAS map (SNP): read config$snp_map_file, align to colnames(W_full) ──
-  # masbayes contract: nrow(map) == ncol(W) with rows in the same order as W
-  # columns. We reorder the map to colnames(W_full) and stop with a clear
-  # message if any column is unmatched, so misaligned SNP IDs surface at
-  # config load time rather than as silent NULL fields in gwas_full.rds.
+  # ── GWAS map (SNP): config$snp_map_file, aligned to colnames(W_full) ──
+  # masbayes needs nrow(map) == ncol(W) in W's column order. We reorder and
+  # stop on any unmatched column, so bad SNP IDs surface here rather than as
+  # silent NULL fields in gwas_full.rds.
   gwas_enabled <- isTRUE(config$gwas$enabled)
   if (gwas_enabled) {
     snp_col_names <- colnames(matrices_full$W_train)
@@ -107,10 +106,8 @@ if (file.exists(full_fit_path)) {
       filter(SNP %in% snp_col_names) %>%
       arrange(match(SNP, snp_col_names))
     if (nrow(map_snp_gwas) != length(snp_col_names)) {
-      # Surface first few unmatched IDs so the user can tell whether the
-      # genotype panel uses a different ID namespace (e.g. custom imputed
-      # target SNPs vs. the 12K MH-derived map) and decide between supplying
-      # a panel-specific map or disabling GWAS for this panel.
+      # Show a few unmatched IDs — usually means the panel uses a different
+      # ID namespace and needs its own map, or GWAS disabled for it.
       missing_ids    <- setdiff(snp_col_names, map_snp_gwas$SNP)
       sample_missing <- paste(head(missing_ids, 5), collapse = ", ")
       stop(sprintf(
@@ -140,9 +137,8 @@ if (file.exists(full_fit_path)) {
               bayesR_full$varcomp$h2, bayesR_full$accuracy$train_pheno,
               full_auc_tag(bayesR_full)))
 
-  # ── GWAS Rds (separate from full_fit.rds per Rds-contract policy) ──
-  # For SNP, pip_block == pip by masbayes convention; per-SNP PIP is the
-  # finest resolution and no max-per-block derivation is needed.
+  # ── GWAS Rds (kept separate from full_fit.rds) ──
+  # For SNP, pip_block == pip: per-SNP PIP is already the finest resolution.
   if (gwas_enabled && !is.null(bayesR_full$pip)) {
     gwas_path <- file.path(base_output_dir, "gwas_full.rds")
     dir.create(base_output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -170,9 +166,8 @@ if (file.exists(full_fit_path)) {
     bayesR = bayesR_full$varcomp$h2
   )
 
-  # Both models fit in a single full_fit. Store diagnostics/runtime as
-  # named lists per model (oysters pipeline differs from simulation, where a
-  # for-loop selects one model_name per iteration).
+  # Both models fit in a single full_fit, so diagnostics/runtime are named
+  # lists per model — unlike simulation, which loops one model per iteration.
   diagnostics_fit <- list(
     gblup  = NULL,
     bayesR = bayesR_full$diagnostics
@@ -246,7 +241,7 @@ all_results <- foreach(
     matrices <- construct_matrices(split$train, split$test, config)
     cat("W_train:", dim(matrices$W_train), "| k_grm:", round(matrices$k_ah, 4), "\n\n")
 
-    # Helper: append AUC to per-fold log line for binary trait
+    # Append AUC to the per-fold log line (binary only)
     auc_tag <- function(res) {
       if (!is_binary) return("")
       sprintf(" | AUC_train=%.4f | AUC_test=%.4f",
@@ -320,10 +315,8 @@ if (any(failed)) {
 }
 cat("Completed", length(all_results), "/", config$k_folds, "folds\n\n")
 
-# Summary log per model
-# - Continuous: train/test = Pearson r on phenotype scale (label: r_MP)
-# - Binary: train/test = Pearson r on observed (probability) scale, plus
-#   separate AUC_train/AUC_test from rank-based ROC.
+# Summary log per model. Continuous: Pearson r on phenotype scale (r_MP).
+# Binary: Pearson r on probability scale, plus separate AUC from rank-based ROC.
 summarize_model <- function(results, model_name) {
   is_bin <- !is.null(config$response_type) && config$response_type == "binary"
   vals <- Filter(Negate(is.null), lapply(results, function(x) {
@@ -392,10 +385,8 @@ build_summary <- function(results, model_name) {
     h2_mean        = mean(sapply(vals, function(v) v$varcomp$h2),           na.rm=TRUE),
     h2_sd          = sd(sapply(vals,   function(v) v$varcomp$h2),           na.rm=TRUE),
     h2_full        = h2_full[[model_name]],
-    # diagnostics$mean_ess can be NULL for folds that skip diagnostics (e.g.
-    # GBLUP) or whose Bayesian fit returned without an ESS field; sapply on
-    # mixed NULL/numeric collapses to a list and trips mean.default. vapply
-    # with NA_real_ default keeps the output type numeric and the log clean.
+    # mean_ess is NULL for folds without diagnostics; sapply would return a
+    # list and break mean.default, so vapply pins the type to numeric.
     ess_mean       = mean(vapply(vals, function(v) {
                             e <- v$diagnostics$mean_ess
                             if (is.null(e) || !is.numeric(e)) NA_real_ else as.numeric(e)[1]

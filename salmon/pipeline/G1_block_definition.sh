@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=22
-#SBATCH --mem=200G
+#SBATCH --mem=64G
 #SBATCH --time=48:00:00
 #SBATCH --account=a_zenger
 #SBATCH --array=1-20
@@ -29,10 +29,9 @@ REF_VCF=${BASE}/raw_data/salmon_60k_pairs125bp.vcf.gz
 ITER=$(printf "%02d" ${SLURM_ARRAY_TASK_ID})
 ITER_DIR=${OUTDIR}/iter${ITER}
 
-# ── Runtime + resource CSV (added 2026-05-20) ─────────────────────────────────
-# Combined CSV across array tasks via flock-protected append.
-# Per step: duration, max RSS, avg RSS, avg CPU%.
-# Plus "TOTAL" row per iter at end.
+# ── Runtime + resource CSV ────────────────────────────────────────────────────
+# One CSV shared across array tasks, appended under flock.
+# Per step: duration, max RSS, avg RSS, avg CPU%; plus a TOTAL row per iter.
 RUNTIME_DIR=${BASE}/runtime
 RUNTIME_CSV=${RUNTIME_DIR}/G1_block_def.csv
 mkdir -p ${RUNTIME_DIR}
@@ -50,8 +49,8 @@ record_step() {
   ) 200>"${RUNTIME_CSV}.lock"
 }
 
-# Run a command with /usr/bin/time -v (max RSS + avg CPU%) + background
-# RSS poller (avg RSS). Supports pipes via `bash -c "..."` wrapper.
+# Run a command under /usr/bin/time -v (max RSS, avg CPU%) with a background
+# RSS poller for avg RSS. Pipes need a `bash -c "..."` wrapper.
 run_timed() {
   local step_name="$1"
   shift
@@ -125,7 +124,7 @@ run_timed "beagle" java -Xmx50g -jar ${EBROOTBEAGLE}/beagle.jar \
     nthreads=${NCORES} \
     out=${ITER_DIR}/geno_G1_phased
 
-gunzip -f ${ITER_DIR}/geno_G1_phased.vcf.gz   # -f: overwrite existing .vcf from prior failed attempt
+gunzip -f ${ITER_DIR}/geno_G1_phased.vcf.gz   # -f: overwrite .vcf from a failed run
 
 echo "Step 2c: convert-from-vcf iter=${ITER}"
 run_timed "convert-from-vcf" ./convert-from-vcf \
@@ -146,9 +145,8 @@ run_with_retry() {
     return 1
 }
 
-# Combine retry + monitoring (fix 2026-05-20): /usr/bin/time cannot directly
-# execute bash functions, so retry must be the OUTER loop wrapping run_timed
-# (which then invokes /usr/bin/time on the actual binary).
+# /usr/bin/time cannot execute bash functions, so retry has to be the OUTER
+# loop wrapping run_timed, which then times the actual binary.
 run_timed_retry() {
     local step_name="$1"
     shift
@@ -183,14 +181,13 @@ run_timed_retry "haplotype-hybrid_hap" ./haplotype-hybrid \
     -v \
     fixed-kb --window-bp 100000
 
-# Per-iter TOTAL summary row (duration only; max/avg RAM aggregated separately
-# from per-step rows during post-analysis)
+# Per-iter TOTAL row: duration only; RAM is aggregated from per-step rows later
 ITER_END=$(date +%s)
 record_step "TOTAL" ${ITER_START} ${ITER_END} 0 0 0 0 0
 
-# Validate that G0 QTL block structure is preserved in G1-discovered blocks.
-# Reports % QTL blocks intact (all causal SNPs in one G1 block) vs fragmented.
-# Output: ${ITER_DIR}/qtl_block_intactness.rds + console summary.
+# Check G0 QTL block structure survives in G1-discovered blocks: % intact
+# (all causal SNPs in one G1 block) vs fragmented.
+# Writes ${ITER_DIR}/qtl_block_intactness.rds.
 INTACT_CHECK=${BASE}/MicrohapsSel/simulation/post-simulation/check_qtl_block_intactness.R
 if [ -f "${INTACT_CHECK}" ]; then
   echo "Step 3: QTL block intactness check iter=${ITER}"

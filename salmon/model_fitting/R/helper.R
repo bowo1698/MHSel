@@ -1,7 +1,7 @@
 # Allele freqs
 compute_allele_frequencies <- function(hap_cols, config) {
 
-  # Pool both copy per blok with strip suffix _1
+  # Pool both copies per block, stripping the _1 suffix
   col_names <- colnames(hap_cols)
   block_names <- sub("_1$", "", col_names)
   hap_cols_pooled <- hap_cols
@@ -25,7 +25,7 @@ compute_allele_frequencies <- function(hap_cols, config) {
   allele_freq_filtered
 }
 
-# W Matrix and Genomic Relationship Matrix Construction
+# W matrix and GRM construction
 construct_W_matrix <- function(hap_cols, allele_freq_filtered, reference_structure = NULL, drop_baseline = TRUE) {
   
   # Convert to matrix format
@@ -165,17 +165,13 @@ enrich_allele_info <- function(allele_info, coords_file) {
     select(-block_num)
 }
 
-# QTL Recovery Evaluation
-##
-## CHANGE 2026-05-20: positional matching for MH×MH-block path
-##   Previously: `top_blocks %in% qtl_mh_blocks` (block_id string match).
-##   That breaks when G1 block definition is re-derived fresh (block_id namespace
-##   differs G0 ↔ G1). New approach: did fitted MH block contain any of the
-##   *causal SNPs* (positions known from qtl_s{3,4,5,6}_effects)? Consistent
-##   with the 5 other paths that already use positional matching.
-##   New param `qtl_block_causal_snps` — character vector of causal SNP IDs
-##   for the current scenario's block QTLs (extracted by caller from
-##   qtl_sN_effects). NULL → fallback to old string-match behaviour.
+# QTL recovery evaluation
+#
+# The MH x MH-block path matches positionally, like the other five paths:
+# does a fitted MH block contain any causal SNP? Block-id string matching
+# breaks when G1 blocks are re-derived, since the namespace differs G0 <-> G1.
+# qtl_block_causal_snps holds those causal SNP IDs; NULL falls back to the
+# old string match.
 compute_qtl_recovery <- function(marker_info, sc, qtl_snp_ids, qtl_mh_blocks,
                                   qtl_hap_blocks, snp_meta, marker_type,
                                   mh_coords = NULL, hap_coords = NULL,
@@ -217,8 +213,7 @@ compute_qtl_recovery <- function(marker_info, sc, qtl_snp_ids, qtl_mh_blocks,
 
     } else if (qtl_unit == "mh_block") {
       if (marker_type == "mh") {
-        ## NEW 2026-05-20: positional overlap with causal SNP positions.
-        ## Fallback to legacy block-id string match if qtl_block_causal_snps not provided.
+        ## Positional overlap with causal SNP positions.
         block_scores <- marker_info %>%
           group_by(global_block_id) %>%
           summarise(block_score = sum(beta_hat^2),
@@ -240,7 +235,7 @@ compute_qtl_recovery <- function(marker_info, sc, qtl_snp_ids, qtl_mh_blocks,
             filter(pos >= start_pos & pos <= end_pos) %>%
             distinct(global_block_id))
         } else {
-          ## Legacy fallback (only valid when block_id namespace shared G0↔G1, e.g. via --reuse-blocks)
+            ## Legacy: only valid when the block_id namespace is shared G0<->G1
           n_hit <- sum(top_blocks_df$global_block_id %in% qtl_mh_blocks)
         }
       } else if (marker_type == "snp" && !is.null(mh_coords)) {
@@ -313,13 +308,12 @@ compute_qtl_recovery <- function(marker_info, sc, qtl_snp_ids, qtl_mh_blocks,
 # MCMC diagnostics helpers
 # ---------------------------------------------------------------------------
 
-# Polyfill for %||% (base since R 4.4.0). Safe to redefine; identical semantics.
+# Polyfill for %||% (base since R 4.4.0); identical semantics.
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
-# MCMC diagnostics -- moving-window Geweke z-score.
-# Split each scalar chain into k contiguous windows of equal length.
-# For each window, compute Geweke z (10% first vs 50% last within the window).
-# Returns NULL when n_kept < k * 10 (insufficient samples).
+# Moving-window Geweke z-score: split each chain into k equal windows and
+# compute Geweke z (first 10% vs last 50%) per window.
+# NULL when n_kept < k * 10.
 compute_geweke_moving <- function(scalar_chains, k = 20L) {
   n_kept <- length(scalar_chains[[1L]])
   if (n_kept < k * 10L) {
@@ -342,9 +336,8 @@ compute_geweke_moving <- function(scalar_chains, k = 20L) {
   out
 }
 
-# MCMC diagnostics -- summary stats per chain.
-# scalar_chains: list of numeric vectors (one per scalar VC parameter).
-# pi_matrix: matrix n_kept x 4 for BayesR's pi chain, or NULL.
+# Summary stats per chain. scalar_chains: one numeric vector per scalar VC
+# parameter. pi_matrix: n_kept x 4 for BayesR's pi chain, or NULL.
 compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
                                  k_window = 20L) {
 
@@ -355,7 +348,7 @@ compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
     unname(coda::geweke.diag(coda::as.mcmc(x))$z)
   })
   hw <- lapply(scalar_chains, function(x) {
-    # heidel.diag aborts on degenerate chains (I=Inf -> pcramer(Inf)=NaN); NA-fallback keeps the fit
+    # heidel.diag aborts on degenerate chains (I=Inf); NA-fallback keeps the fit
     h <- tryCatch(coda::heidel.diag(coda::as.mcmc(x)), error = function(e) NULL)
     if (is.null(h)) return(list(pvalue = NA_real_, passed = NA))
     list(pvalue = unname(h[1L, "pvalue"]),
@@ -380,7 +373,7 @@ compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
       unname(coda::geweke.diag(coda::as.mcmc(x))$z)
     })
     hw$pi <- lapply(seq_len(ncol(pi_matrix)), function(j) {
-      # heidel.diag aborts on degenerate chains (I=Inf -> pcramer(Inf)=NaN); NA-fallback keeps the fit
+      # heidel.diag aborts on degenerate chains (I=Inf); NA-fallback keeps the fit
       h <- tryCatch(coda::heidel.diag(coda::as.mcmc(pi_matrix[, j])),
                     error = function(e) NULL)
       if (is.null(h)) return(list(pvalue = NA_real_, passed = NA))
@@ -407,8 +400,8 @@ compute_mcmc_summary <- function(scalar_chains, pi_matrix = NULL,
   )
 }
 
-# MCMC diagnostics -- build mcmc_diag list dari masbayes res object.
-# Returns NULL kalau config$mcmc_diag$enabled bukan TRUE.
+# Build the mcmc_diag list from a masbayes res object.
+# NULL unless config$mcmc_diag$enabled is TRUE.
 build_mcmc_diag <- function(res, config, meta) {
   if (!isTRUE(config$mcmc_diag$enabled)) return(NULL)
   if (is.null(res$sigma2_e_samples)) {

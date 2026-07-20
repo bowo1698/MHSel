@@ -1,5 +1,4 @@
-# R/data_prep_mh.R
-# Data Loading and Preparation Functions
+# MH data loading and preparation
 
 load_genomic_data <- function(config) {
   
@@ -31,7 +30,7 @@ load_genomic_data <- function(config) {
     )
   }
   
-  # Filter ke individu yang ada di kedua dataset
+  # Keep individuals present in both datasets
   common_ids <- intersect(pheno$ID, hap_geno$ID)
   if (length(common_ids) < nrow(pheno)) {
     cat("Individuals in phenotype but not genotype:", nrow(pheno) - length(common_ids), "\n")
@@ -41,7 +40,7 @@ load_genomic_data <- function(config) {
   }
   pheno <- pheno[!is.na(pheno$phenotype), ]
   common_ids <- intersect(pheno$ID, hap_geno$ID)
-  pheno_ids <- pheno$ID[pheno$ID %in% common_ids]  # urutan dari pheno sebagai referensi
+  pheno_ids <- pheno$ID[pheno$ID %in% common_ids]  # pheno order is the reference
   pheno    <- pheno    %>% filter(ID %in% common_ids) %>% arrange(match(ID, pheno_ids))
   hap_geno <- hap_geno %>% filter(ID %in% common_ids) %>% arrange(match(ID, pheno_ids))
   cat("Common individuals used:", length(common_ids), "\n\n")
@@ -96,7 +95,7 @@ split_fold_data <- function(data, fold_assignments, fold_id) {
 
 compute_allele_frequencies <- function(hap_cols, config) {
   
-  # Pool both copy per blok with strip suffix _1
+  # Pool both copies per block, stripping the _1 suffix
   col_names <- colnames(hap_cols)
   block_names <- sub("_1$", "", col_names)
   hap_cols_pooled <- hap_cols

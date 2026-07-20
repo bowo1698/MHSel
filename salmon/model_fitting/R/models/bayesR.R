@@ -1,4 +1,4 @@
-# BayesR Model with Mixture Prior
+# BayesR with mixture prior
 
 run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
                        map = NULL, windsize = NULL) {
@@ -50,8 +50,8 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
     method        = "mcmc",
     fold_id       = as.integer(fold),
     save_rds      = FALSE,
-    # GWAS surface (masbayes v0.5.0): NULL keeps fit bitwise-identical to v1.4.0.
-    # When supplied, masbayes attaches pip / pip_block / gwas / gwas_meta to res.
+    # NULL keeps the fit bitwise-identical to v1.4.0; when supplied,
+    # masbayes attaches pip / pip_block / gwas / gwas_meta to res.
     map           = map,
     windsize      = windsize
   )
@@ -117,7 +117,7 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
   r2_train_pheno       <- tm$R2
   b_train_pheno        <- tm$bias
 
-  # tbv-based metrics — keep custom (masbayes doesn't know tbv)
+  # tbv-based metrics — custom, masbayes doesn't know tbv
   accuracy_train_tbv <- cor(pred_train, pheno_train$tbv, use = "complete.obs")
   b_train_tbv        <- as.numeric(coef(lm(pheno_train$tbv ~ pred_train))[2])
   rmse_train_tbv     <- sqrt(mean((pred_train - pheno_train$tbv)^2, na.rm = TRUE))
@@ -152,10 +152,8 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
     accuracy_test_gebv  <- NA
   }
 
-  # Marker statistics — keep custom. PIP prefers masbayes's res$pip (full-fit
-  # path with map supplied; identical colMeans(gamma_samples != 0) formula)
-  # and falls back to manual computation for train/test split fits where
-  # map = NULL → res$pip = NULL. Bit-identical to pre-v0.5.0 behaviour.
+  # Marker statistics — custom. Uses res$pip when the full-fit path supplies
+  # map; split fits pass map = NULL, so we compute it manually (same formula).
   beta_ci_lower <- apply(res$beta_samples, 2, quantile, probs = 0.025, na.rm = TRUE)
   beta_ci_upper <- apply(res$beta_samples, 2, quantile, probs = 0.975, na.rm = TRUE)
   PIP <- if (!is.null(res$pip)) res$pip else colMeans(res$gamma_samples != 0)
@@ -261,8 +259,7 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
       mean_ess = mean(unlist(ess)),
       min_ess  = min(unlist(ess))
     ),
-    # GWAS pass-through (masbayes v0.5.0). NULL when map = NULL — caller writes
-    # these to a separate gwas_full.rds; results_all.rds consumers can ignore.
+    # NULL when map = NULL — caller writes these to a separate gwas_full.rds.
     pip       = res$pip,
     pip_block = res$pip_block,
     gwas      = res$gwas,

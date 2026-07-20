@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=100G
+#SBATCH --mem=64G
 #SBATCH --time=24:00:00
 #SBATCH --account=a_zenger
 #SBATCH --array=1-16
@@ -42,8 +42,8 @@ GENO_FILES=(
   "genotypes_microhap_12k.csv"
 )
 
-# Per-panel SNP map: snp_target has its own namespace (custom imputed IDs),
-# the other three panels are subsets of the 12K MH-derived SNP set.
+# snp_target has its own ID namespace; the other three panels are subsets
+# of the 12K MH-derived SNP set.
 SNP_MAPS=(
   "target_snps_map.txt"
   "map_final_12K.txt"

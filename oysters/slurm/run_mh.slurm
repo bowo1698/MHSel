@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=100G
+#SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --account=a_zenger
 #SBATCH --array=1-7
@@ -31,7 +31,7 @@ DATA="${BASE}/data/microhaplotypes"
 BASE_OUT="${BASE}/prediction_oysters/output4/pmx_mh_29m_iter1"
 MODEL="${BASE}/prediction_oysters/model_run"
 
-# REP default 1 jika tidak dipass
+# REP defaults to 1 when not passed
 REP=${REP:-1}
 SEED=$((122 + REP))
 

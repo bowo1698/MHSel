@@ -58,9 +58,8 @@ hap_all           <- hap_geno_current %>%
 allele_freq_full  <- compute_allele_frequencies(hap_all %>% select(-individual_id), config)
 W_result_full     <- construct_W_matrix(hap_all %>% select(-individual_id),
                                         allele_freq_full, drop_baseline = config$drop_baseline)
-# Capture block_id BEFORE [, keep_full] and division
-# attr(W, "block_id"); the attr must be present when run_bayesr(map = ...)
-# is called downstream in the scenario loop.
+# Capture block_id BEFORE [, keep_full] and division — both drop attributes,
+# and run_bayesr(map = ...) needs attr(W, "block_id") in the scenario loop.
 block_id_full_orig <- attr(W_result_full$W_ah, "block_id")
 col_var_full      <- apply(W_result_full$W_ah, 2, var)
 keep_full         <- col_var_full > 0
@@ -69,8 +68,8 @@ block_id_full_keep <- if (!is.null(block_id_full_orig)) block_id_full_orig[keep_
 scale_factor_full <- sqrt(mean(apply(W_result_full$W_ah, 2, var)))
 W_full            <- W_result_full$W_ah / scale_factor_full
 rownames(W_full)  <- hap_all$individual_id
-# Re-attach after subset + scale; keep_full mask is shared between W and
-# block_id, so alignment with ncol(W_full) is guaranteed by construction.
+# Re-attach after subset + scale; W and block_id share the keep_full mask,
+# so alignment with ncol(W_full) holds by construction.
 if (!is.null(block_id_full_keep)) {
   stopifnot(length(block_id_full_keep) == ncol(W_full))
   attr(W_full, "block_id") <- block_id_full_keep
@@ -147,11 +146,9 @@ qtl_hap_blocks <- readRDS(file.path(config$qtl_dir, "qtl_hap_blocks.rds"))
 snp_meta       <- readRDS(file.path(config$qtl_dir, "snp_meta.rds"))
 hap_coords     <- read_csv(config$hap_coords_file, show_col_types = FALSE) %>%
                  mutate(chr = as.integer(chr))
-## REDESIGN 2026-05-22: block QTL is now HAPLOTYPE-ADDITIVE (not dosage epistasis).
-## Each list element is list(chr, snp_ids, snp_sorted_idx, causal_alleles,
-##   allele_freqs, beta) — we use $snp_ids (all block SNPs) for positional
-## recovery in compute_qtl_recovery (MH×MH-block path). Pre-2026-05-22 schema
-## was list(chr, snp_ids=K-causal-SNPs, beta=K-betas, gamma=scalar).
+# Block QTL is haplotype-additive, not dosage epistasis. Each element is
+# list(chr, snp_ids, snp_sorted_idx, causal_alleles, allele_freqs, beta);
+# compute_qtl_recovery uses $snp_ids (all block SNPs) for positional recovery.
 qtl_s3_effects <- readRDS(file.path(config$qtl_dir, "qtl_s3_effects.rds"))
 qtl_s4_effects <- readRDS(file.path(config$qtl_dir, "qtl_s4_effects.rds"))
 qtl_s5_effects <- readRDS(file.path(config$qtl_dir, "qtl_s5_effects.rds"))
@@ -277,12 +274,11 @@ for (sc in names(config$scenarios)) {
     coef(lm(pheno_full$tbv ~ bayesR_full$predictions$train))[2],
     bayesR_full$varcomp$h2))
 
-  # ── GWAS Rds (separate from results_all.rds per Rds-contract policy) ──
-  # max-per-block PIP: more discriminative than masbayes pip_block on small
-  # blocks. pip_block is a union statistic (P(any allele has gamma != 0))
-  # which inflates with block size k roughly as 1 - (1-p)^k; max-per-block
-  # is bounded by max(PIP) over alleles. See masbayes/examples/04_gwas.R
-  # lines 130-138 for the demo discussion.
+  # ── GWAS Rds (kept separate from results_all.rds) ──
+  # max-per-block PIP beats masbayes pip_block on small blocks: pip_block is
+  # a union statistic that inflates with block size k as ~1 - (1-p)^k, while
+  # max-per-block stays bounded by max(PIP) over alleles.
+  # See masbayes/examples/04_gwas.R for the discussion.
   if (gwas_enabled && !is.null(bayesR_full$pip)) {
     max_pip_block <- vapply(map_mh_gwas$block_id, function(b) {
       idx <- which(block_id_W_full == b)

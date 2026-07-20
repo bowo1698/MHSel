@@ -1,4 +1,4 @@
-# Cross-Validation Setup Functions
+# Cross-validation setup
 
 check_family_structure <- function(phenotypes, min_offspring = 5) {
   
@@ -48,18 +48,18 @@ setup_cluster_cv <- function(data, config, G = NULL) {
 setup_grm_stratified_cv <- function(data, config, G = NULL) {
   set.seed(config$cv_seed)
   k      <- config$k_folds
-  n_clus <- config$n_grm_clusters %||% 10  # default 10 cluster
+  n_clus <- config$n_grm_clusters %||% 10  # default 10 clusters
 
   if (is.null(G)) stop("GRM is required for GRM-stratified CV")
 
-  # PCA dari GRM
+  # PCA of the GRM
   eig <- eigen(G, symmetric = TRUE)
   pcs <- eig$vectors[, 1:5]
 
-  # K-means dengan n_clus cluster
+  # K-means into n_clus clusters
   km <- kmeans(pcs, centers = n_clus, nstart = 20, iter.max = 100)
 
-  # Stratified assignment: dari tiap cluster, bagi merata ke k fold
+  # Stratified assignment: spread each cluster evenly across the k folds
   n_ind <- nrow(data$phenotypes)
   fold_assignments <- integer(n_ind)
   for (cl in 1:n_clus) {

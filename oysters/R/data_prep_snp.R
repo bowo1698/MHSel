@@ -1,5 +1,4 @@
-# R/data_prep_snp.R
-# Data preprocessing and feature engineering functions
+# SNP data loading and preprocessing
 
 suppressPackageStartupMessages({ library(tidyverse) })
 
@@ -128,14 +127,9 @@ split_fold_data <- function(data, fold_assignments, fold_id) {
 }
 
 # Build matrices for one (train, test) split.
-# Strategy: G GBLUP always derives from VanRaden W = X - 2p (preserves
-# classical GBLUP semantics). The Bayesian W can additionally be z-scored
-# when `config$snp_encoding = "zscore"`, in which case W_train and W_test
-# returned for BayesR carry per-column unit variance while
-# A_train / A_combined remain VanRaden-based.
-# Backward compatibility: if `config$snp_encoding` is missing, defaults
-# to "vanRaden" and reuses one W for both Bayesian and GBLUP (bit-identical
-# to the pre-PR-2 code path).
+# G GBLUP always from VanRaden W = X - 2p (classical GBLUP semantics).
+# config$snp_encoding = "zscore" z-scores the Bayesian W only; A stays VanRaden.
+# Missing snp_encoding defaults to "vanRaden": one W shared by both.
 construct_matrices <- function(train_data, test_data, config) {
 
   geno_train <- as.matrix(train_data$genotypes %>% select(-ID))
@@ -157,8 +151,7 @@ construct_matrices <- function(train_data, test_data, config) {
 
   encoding <- config$snp_encoding %||% "vanRaden"
 
-  # VanRaden W: always built — used to derive G GBLUP. When
-  # encoding == "vanRaden", also reused as the Bayesian design matrix.
+  # Always built for G GBLUP; also the Bayesian W when encoding == "vanRaden".
   vR_train <- masbayes::construct_snp_matrix(geno_train, encoding = "vanRaden")
   vR_test  <- masbayes::construct_snp_matrix(geno_test, encoding = "vanRaden",
                                              ref_freq = vR_train$freq)

@@ -1,8 +1,7 @@
-# W Matrix and Genomic Relationship Matrix Construction (MH path)
+# W matrix and GRM construction (MH path)
 #
-# W_ah is built via masbayes::construct_wah_matrix() and shared between
-# Bayesian models (used directly) and GBLUP (G = tcrossprod(W_ah)/k_ah).
-# This avoids any duplicate encoding work between the two model families.
+# W_ah from masbayes::construct_wah_matrix(), shared by Bayesian models
+# (direct) and GBLUP (G = tcrossprod(W_ah)/k_ah) — no duplicate encoding.
 construct_W_matrix <- function(hap_cols, allele_freq_filtered, reference_structure = NULL, drop_baseline = TRUE) {
 
   hap_matrix <- as.matrix(hap_cols)
@@ -80,9 +79,8 @@ construct_matrices <- function(train_data, test_data, allele_freq, config) {
     drop_baseline        = config$drop_baseline
   )
 
-  # Capture block_id BEFORE column-subsetting and arithmetic. Both ops drop
-  # matrix attributes in R, and masbayes v0.5.0 requires attr(W, "block_id")
-  # on the matrix passed to run_bayesr(map = ...) to auto-detect the MH path.
+  # Capture block_id BEFORE subset/arithmetic — both drop matrix attributes,
+  # and run_bayesr(map = ...) needs attr(W, "block_id") to detect the MH path.
   block_id_orig <- attr(W_result_train$W_ah, "block_id")
 
   # Filter zero-variance columns
@@ -103,10 +101,8 @@ construct_matrices <- function(train_data, test_data, allele_freq, config) {
   W_result_train$W_ah <- W_result_train$W_ah / scale_factor
   W_result_test$W_ah  <- W_result_test$W_ah  / scale_factor
 
-  # Re-attach block_id after subset + scale. Train and test share identical
-  # columns by construction (reference_structure path), so the same vector
-  # applies to both. Symmetric attachment guards future predict() callers
-  # that may also auto-detect MH via attr(W, "block_id").
+  # Re-attach after subset + scale. Train and test share columns by
+  # construction, so one vector serves both; test needs it for predict().
   if (!is.null(block_id_keep)) {
     stopifnot(length(block_id_keep) == ncol(W_result_train$W_ah))
     attr(W_result_train$W_ah, "block_id") <- block_id_keep

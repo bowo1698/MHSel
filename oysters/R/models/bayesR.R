@@ -1,4 +1,4 @@
-# BayesR Model with Mixture Prior
+# BayesR with mixture prior
 
 run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
                        map = NULL, windsize = NULL) {
@@ -70,20 +70,20 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
     response_type = if (!is.null(config$response_type)) config$response_type else "gaussian",
     fold_id       = as.integer(fold),
     save_rds      = FALSE,
-    # GWAS surface (masbayes v0.5.0): NULL keeps fit bitwise-identical to v1.4.0.
-    # When supplied, masbayes attaches pip / pip_block / gwas / gwas_meta to res.
+    # NULL keeps the fit bitwise-identical to v1.4.0; when supplied,
+    # masbayes attaches pip / pip_block / gwas / gwas_meta to res.
     map           = map,
     windsize      = windsize
   )
 
-  # Posterior point estimates (raw fields preserved for marker_info etc.)
+  # Posterior point estimates (raw fields kept for marker_info etc.)
   beta_hat       <- res$beta_hat
   sigma2_e_hat   <- res$sigma2_e_hat
   alpha_hat      <- res$alpha_hat
   sigma2_g_hat   <- res$sigma2_g
   h2_hat         <- res$h2
 
-  # Predictions via masbayes::predict() — same formula, single source of truth
+  # Predictions via masbayes::predict() — single source of truth
   pred_train <- as.vector(predict(res)$GEBV)
 
   if (has_test) {
@@ -109,8 +109,8 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
     as.numeric(names(sort(tab, decreasing = TRUE)[1]))
   })
 
-  # Per-marker 4-class PIP from MCMC class labels (0/1/2/3 = null/small/medium/
-  # large). Eq 3 MAP = which.max(row); Eq 4 non-null = 1 - null > 0.5.
+  # 4-class PIP from MCMC class labels (0-3 = null/small/medium/large).
+  # Eq 3 MAP = which.max(row); Eq 4 non-null = 1 - null > 0.5.
   pip_class <- vapply(0:3, function(k) colMeans(res$gamma_samples == k),
                       numeric(ncol(res$gamma_samples)))
   colnames(pip_class) <- c("null", "small", "medium", "large")
@@ -142,10 +142,9 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
     cat("α (FE):", round(as.numeric(alpha_hat), 4), "\n")
   cat("\n")
 
-  # Train / test metrics from masbayes — always observed scale for binary
-  # (masbayes::compute_metrics_binary applies pnorm before scoring so accuracy
-  # is Pearson r on probability scale, R2 = r^2, RMSE^2 ≈ Brier).
-  # AUC stored separately so it does not collide with the accuracy field.
+  # Binary metrics are on the observed scale: compute_metrics_binary applies
+  # pnorm first, so accuracy is Pearson r on probability scale, R2 = r^2,
+  # RMSE^2 ~ Brier. AUC kept separate to avoid clashing with accuracy.
   is_binary <- !is.null(config$response_type) && config$response_type == "binary"
   tm <- res$training_metrics
   accuracy_train_pheno <- tm$accuracy
@@ -193,12 +192,9 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
         accuracy_test_pheno / sqrt(h2_test_bayesr) else NA
   }
 
-  # Marker-level CI / PIP / significance — keep custom (project-specific).
-  # PIP prefers masbayes's pre-computed res$pip when GWAS is enabled (the
-  # full-fit path supplies map → res$pip is populated by masbayes using
-  # colMeans(gamma_samples != 0), identical formula). CV per-fold runs
-  # don't pass map, so res$pip is NULL and we fall back to the manual
-  # computation — bit-identical to pre-v0.5.0 behaviour.
+  # Marker-level CI / PIP / significance — custom, project-specific.
+  # Uses res$pip when GWAS is on (full-fit passes map); CV folds pass no map,
+  # so res$pip is NULL and we compute it manually — identical formula.
   beta_ci_lower <- apply(res$beta_samples, 2, quantile, probs = 0.025, na.rm = TRUE)
   beta_ci_upper <- apply(res$beta_samples, 2, quantile, probs = 0.975, na.rm = TRUE)
   PIP <- if (!is.null(res$pip)) res$pip else colMeans(res$gamma_samples != 0)
@@ -283,9 +279,8 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
       mean_ess = mean(unlist(ess)),
       min_ess  = min(unlist(ess))
     ),
-    # GWAS pass-through (masbayes v0.5.0). NULL when map = NULL — caller writes
-    # these to a separate gwas_full.rds; full_fit.rds consumers can ignore them.
-    # pip_class is always populated (derived from gamma_samples, not map).
+    # NULL when map = NULL — caller writes these to a separate gwas_full.rds.
+    # pip_class is always populated (from gamma_samples, not map).
     pip       = res$pip,
     pip_block = res$pip_block,
     pip_class = pip_class,

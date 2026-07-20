@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=200G
+#SBATCH --mem=64G
 #SBATCH --time=120:00:00
 #SBATCH --account=a_zenger
 #SBATCH -o logs/fit_cv_G1_snp_%A_%a.out

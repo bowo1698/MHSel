@@ -44,7 +44,7 @@ test_ids  <- character(0)
 
 cat(sprintf("Full-data fit: train=%d (no test split)\n", length(train_ids)))
 
-# ── 3. QC + standardize dari training set ────────────────────────────────────
+# ── 3. QC + standardize from the training set ────────────────────────────────
 ind_ids_raw <- genotype_raw$individual_id
 geno_matrix <- genotype_raw %>%
   select(-individual_id) %>%
@@ -60,7 +60,7 @@ geno_all_imputed <- geno_all_proc$imputed
 storage.mode(geno_all_imputed) <- "double"
 rownames(geno_all_imputed) <- as.character(ind_ids_all)
 
-# SNP encoding dispatch: G GBLUP always derives from VanRaden W; Bayesian
+# G GBLUP always derives from VanRaden W; the Bayesian W may differ below.
 snp_encoding <- config$snp_encoding %||% "vanRaden"
 
 vR_full           <- masbayes::construct_snp_matrix(geno_all_imputed,
@@ -97,7 +97,7 @@ geno_test_raw  <- geno_matrix[test_idx_raw, ]
 ind_ids_train  <- ind_ids_raw[train_idx_raw]
 ind_ids_test   <- ind_ids_raw[test_idx_raw]
 
-# QC dari training saja
+# QC on the training set only
 qc_result           <- quality_control(geno_train_raw, config)
 keep_snps           <- qc_result$keep_snps
 geno_train_filtered <- geno_train_raw[, keep_snps]
@@ -118,8 +118,8 @@ storage.mode(geno_test_imputed)  <- "double"
 rownames(geno_train_imputed) <- as.character(ind_ids_train)
 rownames(geno_test_imputed)  <- as.character(ind_ids_test)
 
-# VanRaden W: always built — supplies G GBLUP. Bayesian W may be a
-# separately z-scored matrix when `config$snp_encoding = "zscore"`.
+# Always built for G GBLUP; the Bayesian W is z-scored separately when
+# config$snp_encoding = "zscore".
 vR_train <- masbayes::construct_snp_matrix(geno_train_imputed,
                                            encoding = "vanRaden")
 vR_test  <- masbayes::construct_snp_matrix(geno_test_imputed,
@@ -166,7 +166,7 @@ snp_map <- read_tsv(
   rename(snp_id = SNPID, chr = Chr, position = Position) %>%
   mutate(chr = as.integer(chr))
 
-snp_names_train <- colnames(geno_train_imputed)  # nama SNP setelah QC
+snp_names_train <- colnames(geno_train_imputed)  # SNP names after QC
 snp_allele_info <- snp_map %>%
   filter(snp_id %in% snp_names_train) %>%
   arrange(match(snp_id, snp_names_train)) %>%
@@ -211,7 +211,7 @@ hap_coords     <- read_csv(config$hap_coords_file, show_col_types = FALSE) %>%
 cat(sprintf("QTL loaded: %d SNP QTL | %d MH block QTL | %d HAP block QTL\n",
             length(qtl_snp_ids), length(qtl_mh_blocks), length(qtl_hap_blocks)))  
 
-# ── 4. Loop skenario ──────────────────────────────────────────────────────────
+# ── 4. Scenario loop ──────────────────────────────────────────────────────────
 for (sc in names(config$scenarios)) {
 
   out_dir  <- file.path(config$output_dir, sc)
@@ -276,9 +276,8 @@ for (sc in names(config$scenarios)) {
     coef(lm(pheno_full$tbv ~ bayesR_full$predictions$train))[2],
     bayesR_full$varcomp$h2))
 
-  # ── GWAS Rds (separate from results_all.rds per Rds-contract policy) ──
-  # For SNP path, pip_block == pip by masbayes convention, so no max-per-block
-  # derivation is needed; the per-SNP PIP is already the finest resolution.
+  # ── GWAS Rds (kept separate from results_all.rds) ──
+  # For SNP, pip_block == pip: per-SNP PIP is already the finest resolution.
   if (gwas_enabled && !is.null(bayesR_full$pip)) {
     iter_label <- basename(config$data_dir)
     gen_label  <- sub("^output_", "", basename(dirname(config$data_dir)))

@@ -1,5 +1,5 @@
 # GBLUP via masreml (REML for VC, Cholesky/PCG for BLUP).
-# Uses pre-built G matrix from matrices$A_train and matrices$A_combined.
+# G comes pre-built in matrices$A_train / A_combined.
 
 run_gblup <- function(matrices, split, config) {
 
@@ -33,7 +33,7 @@ run_gblup <- function(matrices, split, config) {
                     config$response_type == "binary") "binary" else "continuous"
   link_type  <- if (!is.null(config$link)) config$link else "logit"
 
-  # Fixed effects design matrix (intercept + factor(fe_col) if set)
+  # Fixed effects: intercept + factor(fe_col) if set
   X_train <- if (!is.null(fe_col) && fe_col %in% names(pheno_train)) {
     cbind(1, as.numeric(as.factor(pheno_train[[fe_col]])))
   } else {
@@ -60,7 +60,7 @@ run_gblup <- function(matrices, split, config) {
 
   pred_train <- as.numeric(gblup_fit$total_gebv) + mu_hat
 
-  # Test-set h2 via independent fit on test individuals (production convention)
+  # Test-set h2 from an independent fit on test individuals
   h2_test_gblup <- NA_real_
   if (has_test && nrow(pheno_test) > 1) {
     h2_test_gblup <- tryCatch({
@@ -89,7 +89,7 @@ run_gblup <- function(matrices, split, config) {
     }, error = function(e) NA_real_)
   }
 
-  # Test prediction via masreml's S3 predict (uses Cholesky on G_train + lambda*I)
+  # Test prediction via masreml S3 predict (Cholesky on G_train + lambda*I)
   if (has_test) {
     gblup_pred <- predict(
       gblup_fit,
@@ -115,9 +115,8 @@ run_gblup <- function(matrices, split, config) {
     coef(fit)[2]
   }
 
-  # Binary: score on the observed (probability) scale so r/RMSE/bias are
-  # consistent with the package's training_metrics and the AUC interpretation.
-  # Continuous: pred_train / pred_test already on the phenotype scale.
+  # Binary: score on the probability scale, to match training_metrics and AUC.
+  # Continuous: predictions are already on the phenotype scale.
   if (trait_type == "binary") {
     score_train <- as.numeric(gblup_fit$binary$fitted)
     if (has_test) {

@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=100G
+#SBATCH --mem=64G
 #SBATCH --time=24:00:00
 #SBATCH --account=a_zenger
 #SBATCH --array=1-4

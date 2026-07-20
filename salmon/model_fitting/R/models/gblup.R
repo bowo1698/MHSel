@@ -1,5 +1,5 @@
 # GBLUP via masreml (REML for VC, Cholesky/PCG for BLUP).
-# Uses pre-built G matrix from matrices$A_train and matrices$A_combined.
+# G comes pre-built in matrices$A_train / A_combined.
 
 run_gblup <- function(matrices, split, config) {
 
@@ -42,7 +42,7 @@ run_gblup <- function(matrices, split, config) {
 
   pred_train <- as.numeric(gblup_fit$total_gebv) + mu_hat
 
-  # Test-set h2 via independent fit on test individuals
+  # Test-set h2 from an independent fit on test individuals
   h2_test_gblup <- NA_real_
   if (has_test && nrow(pheno_test) > 1) {
     h2_test_gblup <- tryCatch({
@@ -59,7 +59,7 @@ run_gblup <- function(matrices, split, config) {
     }, error = function(e) NA_real_)
   }
 
-  # Test prediction via masreml's S3 predict (Cholesky-based)
+  # Test prediction via masreml S3 predict (Cholesky-based)
   if (has_test) {
     gblup_pred <- predict(
       gblup_fit,
