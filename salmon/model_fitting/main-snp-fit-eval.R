@@ -19,7 +19,6 @@ setwd(config$base_dir)
 source("R/helper.R")
 source("R/models/gblup.R")
 source("R/models/bayesR.R")
-source("R/models/bayesA.R")
 
 pipeline_start <- Sys.time()
 cat(sprintf("=== Full-data Pipeline started: %s ===\n", Sys.time()))
@@ -304,22 +303,13 @@ for (sc in names(config$scenarios)) {
                 file.path(out_dir, "gwas_full.rds")))
   }
 
-  t0_bayesA  <- proc.time()
-  bayesA_full <- run_bayesA(matrices_full, split_full, gblup_full$varcomp, config, fold = 0)
-  rt_bayesA  <- (proc.time() - t0_bayesA)[["elapsed"]]
-  cat(sprintf("    [full] bayesA | acc=%.4f bias=%.4f h2=%.3f\n",
-    cor(bayesA_full$predictions$train, pheno_full$tbv, use="complete.obs"),
-    coef(lm(pheno_full$tbv ~ bayesA_full$predictions$train))[2],
-    bayesA_full$varcomp$h2))
-
   full_results <- list(
     gblup  = list(GEBV = gblup_full$predictions$train,  h2 = gblup_full$varcomp$h2),
-    bayesR = list(GEBV = bayesR_full$predictions$train, h2 = bayesR_full$varcomp$h2),
-    bayesA = list(GEBV = bayesA_full$predictions$train, h2 = bayesA_full$varcomp$h2)
+    bayesR = list(GEBV = bayesR_full$predictions$train, h2 = bayesR_full$varcomp$h2)
   )
 
   # ── Save full-data fit per model ──
-  for (model_name in c("gblup", "bayesR", "bayesA")) {
+  for (model_name in c("gblup", "bayesR")) {
     dir.create(file.path(out_dir, model_name),
                recursive = TRUE, showWarnings = FALSE)
 
@@ -349,8 +339,7 @@ for (sc in names(config$scenarios)) {
 
     markers <- switch(model_name,
       gblup  = NULL,
-      bayesR = bayesR_full$markers,
-      bayesA = bayesA_full$markers
+      bayesR = bayesR_full$markers
     )
     qtl_recovery <- compute_qtl_recovery(markers, sc, qtl_snp_ids,
                                          qtl_mh_blocks, qtl_hap_blocks,
@@ -359,19 +348,16 @@ for (sc in names(config$scenarios)) {
                                          hap_coords = hap_coords)
     diagnostics_fit <- switch(model_name,
       gblup  = NULL,
-      bayesR = bayesR_full$diagnostics,
-      bayesA = bayesA_full$diagnostics
+      bayesR = bayesR_full$diagnostics
     )
     runtime_fit <- switch(model_name,
       gblup  = rt_gblup,
-      bayesR = rt_bayesR,
-      bayesA = rt_bayesA
+      bayesR = rt_bayesR
     )
 
     mcmc_diag_obj <- switch(model_name,
       gblup  = NULL,
-      bayesR = bayesR_full$mcmc_diag,
-      bayesA = bayesA_full$mcmc_diag
+      bayesR = bayesR_full$mcmc_diag
     )
     if (!is.null(mcmc_diag_obj)) {
       iter_label_mcmc <- basename(config$data_dir)

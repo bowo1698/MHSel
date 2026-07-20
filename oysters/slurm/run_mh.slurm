@@ -91,7 +91,6 @@ config <- list(
     var_class = ${VC_MH},
     prior_df  = list(residual = 10, genetic = 10)
   ),
-  bayesA = list(nu = 4.5, prior_df_residual = 10),
   save_mcmc_samples = FALSE,
   coords_mh_file    = "${DATA}/mh_info_filtered_12k/stats/microhaplotype_coordinates.csv",
   gwas              = list(enabled = TRUE, windsize = 500e3)

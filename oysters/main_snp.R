@@ -26,7 +26,6 @@ setwd(config$base_dir)
 source("R/data_prep_snp.R")
 source("R/models/gblup.R")
 source("R/models/bayesR.R")
-source("R/models/bayesA.R")
 
 dir.create(config$output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(config$output_dir, "logs"), recursive = TRUE, showWarnings = FALSE)
@@ -51,8 +50,8 @@ if (file.exists(full_fit_path)) {
   cat("Full fit found at:", full_fit_path, "— loading...\n")
   full_fit <- readRDS(full_fit_path)
   h2_full  <- full_fit$h2_full
-  cat(sprintf("h2_full: GBLUP=%.4f | BayesR=%.4f | BayesA=%.4f\n\n",
-              h2_full$gblup %||% NA, h2_full$bayesR, h2_full$bayesA))
+  cat(sprintf("h2_full: GBLUP=%.4f | BayesR=%.4f\n\n",
+              h2_full$gblup %||% NA, h2_full$bayesR))
 } else {
   cat("\n=== Full Data Fit ===\n")
   full_start <- Sys.time()
@@ -166,40 +165,28 @@ if (file.exists(full_fit_path)) {
     cat(sprintf("GWAS RDS saved: %s\n\n", gwas_path))
   }
 
-  cat("Running BayesA full...\n")
-  t0_bayesA  <- proc.time()
-  bayesA_full <- run_bayesA(matrices_full, full_split, gblup_varcomp_full, config_full, fold = 0)
-  rt_bayesA  <- (proc.time() - t0_bayesA)[["elapsed"]]
-  cat(sprintf("BayesA full: h2=%.4f | train_acc=%.4f%s\n\n",
-              bayesA_full$varcomp$h2, bayesA_full$accuracy$train_pheno,
-              full_auc_tag(bayesA_full)))
-
   h2_full <- list(
     gblup  = gblup_full$varcomp$h2,
-    bayesR = bayesR_full$varcomp$h2,
-    bayesA = bayesA_full$varcomp$h2
+    bayesR = bayesR_full$varcomp$h2
   )
 
-  # All three models fit in a single full_fit. Store diagnostics/runtime as
+  # Both models fit in a single full_fit. Store diagnostics/runtime as
   # named lists per model (oysters pipeline differs from simulation, where a
   # for-loop selects one model_name per iteration).
   diagnostics_fit <- list(
     gblup  = NULL,
-    bayesR = bayesR_full$diagnostics,
-    bayesA = bayesA_full$diagnostics
+    bayesR = bayesR_full$diagnostics
   )
 
   runtime_fit <- list(
     gblup  = rt_gblup,
-    bayesR = rt_bayesR,
-    bayesA = rt_bayesA
+    bayesR = rt_bayesR
   )
 
   full_fit <- list(
     grm_stats = grm_stats_full,
     gblup     = gblup_full,
     bayesR    = bayesR_full,
-    bayesA    = bayesA_full,
     h2_full   = h2_full,
     diagnostics_fit = diagnostics_fit,
     runtime_fit = runtime_fit
@@ -238,7 +225,6 @@ all_results <- foreach(
   source("R/data_prep_snp.R")
   source("R/models/gblup.R")
   source("R/models/bayesR.R")
-  source("R/models/bayesA.R")
   select <- dplyr::select; filter <- dplyr::filter
   is_binary <- !is.null(config$response_type) && config$response_type == "binary"
 
@@ -250,8 +236,8 @@ all_results <- foreach(
 
     cat(sprintf("\n========== FOLD %d/%d ==========\n", fold, config$k_folds))
     cat("Started:", as.character(Sys.time()), "\n\n")
-    cat(sprintf("h2_full: GBLUP=%.4f | BayesR=%.4f | BayesA=%.4f\n\n",
-                h2_full$gblup %||% NA, h2_full$bayesR, h2_full$bayesA))
+    cat(sprintf("h2_full: GBLUP=%.4f | BayesR=%.4f\n\n",
+                h2_full$gblup %||% NA, h2_full$bayesR))
 
     fold_info <- get_fold_split_info(data, cv_setup, fold)
     cat(sprintf("Train N=%d | Test N=%d\n", fold_info$n_train, fold_info$n_test))
@@ -296,21 +282,6 @@ all_results <- foreach(
                 bayesR_res$varcomp$h2, auc_tag(bayesR_res),
                 bayesR_res$diagnostics$mean_ess, bayesR_res$runtime))
 
-    # BayesA
-    cat("Running BayesA...\n")
-    t0 <- Sys.time()
-    bayesA_res <- run_bayesA(matrices, split, gblup_varcomp, config, fold = fold)
-    bayesA_res$runtime <- as.numeric(difftime(Sys.time(), t0, units = "hours"))
-    r_MG_bayesA <- if (!is.na(h2_full$bayesA) && h2_full$bayesA > 0.01)
-      bayesA_res$accuracy$test_pheno / sqrt(h2_full$bayesA) else NA
-    bayesA_res$accuracy$test_gebv <- r_MG_bayesA
-    cat(sprintf("BayesA train=%.4f | test=%.4f | r_MG=%.4f | h2=%.4f%s | ESS=%.1f | %.2fh\n\n",
-                bayesA_res$accuracy$train_pheno, bayesA_res$accuracy$test_pheno,
-                ifelse(is.na(r_MG_bayesA), NA, r_MG_bayesA),
-                bayesA_res$varcomp$h2, auc_tag(bayesA_res),
-                bayesA_res$diagnostics$mean_ess,
-                bayesA_res$runtime))
-
     fold_runtime <- as.numeric(difftime(Sys.time(), fold_start, units = "hours"))
     cat(sprintf("========== FOLD %d DONE | %.2fh ==========\n", fold, fold_runtime))
 
@@ -321,12 +292,10 @@ all_results <- foreach(
       fold   = fold,
       gblup  = gblup_res,
       bayesR = bayesR_res,
-      bayesA = bayesA_res,
       runtime = list(
         fold_total = fold_runtime,
         gblup      = gblup_res$runtime,
-        bayesR     = bayesR_res$runtime,
-        bayesA     = bayesA_res$runtime
+        bayesR     = bayesR_res$runtime
       )
     )
 
@@ -401,7 +370,6 @@ summarize_model <- function(results, model_name) {
 
 summarize_model(all_results, "gblup")
 summarize_model(all_results, "bayesR")
-summarize_model(all_results, "bayesA")
 
 # Build summary
 build_summary <- function(results, model_name) {
@@ -445,8 +413,7 @@ build_summary <- function(results, model_name) {
 
 summary_list <- list(
   gblup  = build_summary(all_results, "gblup"),
-  bayesR = build_summary(all_results, "bayesR"),
-  bayesA = build_summary(all_results, "bayesA")
+  bayesR = build_summary(all_results, "bayesR")
 )
 
 # Save RDS

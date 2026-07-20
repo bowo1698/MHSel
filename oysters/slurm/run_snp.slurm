@@ -109,7 +109,6 @@ config <- list(
     var_class = ${VC},
     prior_df  = list(residual = -1, genetic = 2)
   ),
-  bayesA = list(nu = 4, prior_df_residual = -1),
   save_mcmc_samples = FALSE,
   snp_map_file      = "${DATA}/${SNP_MAP_FILE}",
   gwas              = list(enabled = TRUE, windsize = 500e3)

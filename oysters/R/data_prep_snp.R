@@ -131,7 +131,7 @@ split_fold_data <- function(data, fold_assignments, fold_id) {
 # Strategy: G GBLUP always derives from VanRaden W = X - 2p (preserves
 # classical GBLUP semantics). The Bayesian W can additionally be z-scored
 # when `config$snp_encoding = "zscore"`, in which case W_train and W_test
-# returned for BayesA/BayesR carry per-column unit variance while
+# returned for BayesR carry per-column unit variance while
 # A_train / A_combined remain VanRaden-based.
 # Backward compatibility: if `config$snp_encoding` is missing, defaults
 # to "vanRaden" and reuses one W for both Bayesian and GBLUP (bit-identical

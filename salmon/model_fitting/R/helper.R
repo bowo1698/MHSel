@@ -442,14 +442,6 @@ build_mcmc_diag <- function(res, config, meta) {
       pi_matrix[, 3L] * chains$sigma2_medium +
       pi_matrix[, 4L] * chains$sigma2_large
     chains$h2 <- sigma2_g_chain / (sigma2_g_chain + chains$sigma2_e)
-  } else if (model == "bayesA") {
-    if (is.null(res$sigma2_j_samples)) {
-      warning("res$sigma2_j_samples missing for bayesA -- mcmc_diag skipped")
-      return(NULL)
-    }
-    mean_sigma2_j_chain <- rowMeans(res$sigma2_j_samples)
-    chains$h2 <- mean_sigma2_j_chain /
-      (mean_sigma2_j_chain + chains$sigma2_e)
   } else {
     stop("Unknown model: ", model)
   }

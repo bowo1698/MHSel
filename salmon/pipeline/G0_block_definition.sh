@@ -16,6 +16,8 @@ RAW=$BASE/raw_data
 MAP=$RAW/salmon_60k_map_final.txt
 NCORES=15
 
+bgzip -dk $RAW/salmon_60k_pairs125bp.vcf.gz
+
 echo "convert-from-vcf G0"
 ./convert-from-vcf \
     -i $RAW/salmon_60k_pairs125bp.vcf \
