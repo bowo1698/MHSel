@@ -12,16 +12,17 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
 
   y <- pheno_train$phenotype
 
-  pi_vec        <- config$bayesR$pi
-  is_snp        <- identical(config$marker_type, "snp")
-  vary          <- var(y)
-  sigma2_ah     <- if (is_snp) vary / 4 else gblup_varcomp$sigma2_g
-  sigma2_e_init <- if (is_snp) vary / 2 else gblup_varcomp$sigma2_e
+  # Identical prior and kernel for SNP and MH (common/bayesr_prior.R)
+  if (!exists("bayesr_prior")) source(file.path(config$common_dir, "bayesr_prior.R"))
+  prior         <- bayesr_prior("gaussian")
+  pi_vec        <- prior$pi
+  sigma2_ah     <- gblup_varcomp$sigma2_g
+  sigma2_e_init <- gblup_varcomp$sigma2_e
 
   prior_params <- list(
-    a0_e           = config$bayesR$prior_df$residual,
-    a0_g           = config$bayesR$prior_df$genetic,
-    variance_class = config$bayesR$var_class
+    a0_e           = prior$a0_e,
+    a0_g           = prior$a0_g,
+    variance_class = prior$variance_class
   )
 
   cat("BayesR Settings:\n")
@@ -36,7 +37,7 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
   res <- masbayes::run_bayesr(
     w             = W_train,
     y             = y,
-    marker_type   = config$marker_type %||% "auto",
+    marker_type   = prior$marker_type,
     pi_vec        = pi_vec,
     sigma2_e_init = sigma2_e_init,
     sigma2_ah     = sigma2_ah,
