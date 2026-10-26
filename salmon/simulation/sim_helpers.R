@@ -10,6 +10,6 @@ build_gen_map <- function(chr, pos_bp, cm_per_mb = 1) {
 }
 
 # Per family: first n_pheno offspring phenotyped (reference), rest candidates.
-population_type_vector <- function(n_fam, n_pheno = 25L, n_cand = 10L) {
+population_type_vector <- function(n_fam, n_pheno = 20L, n_cand = 5L) {
   rep(rep(c("reference", "candidate"), c(n_pheno, n_cand)), n_fam)
 }
