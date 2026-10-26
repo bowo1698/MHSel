@@ -59,13 +59,14 @@ run_timed() {
   /usr/bin/time -v -o ${time_log} "$@" &
   local cmd_pid=$!
 
-  # Background poller: sample RSS of cmd_pid's child every 10s
+  # Background poller: sample RSS of cmd_pid's child every 10s. It inherits
+  # errexit/pipefail, so a pid that exits mid-sample must not fail it (or the step).
   (
     sleep 5
     while kill -0 ${cmd_pid} 2>/dev/null; do
-      child=$(pgrep -P ${cmd_pid} 2>/dev/null | head -1)
+      child=$(pgrep -P ${cmd_pid} 2>/dev/null | head -1 || true)
       target_pid=${child:-${cmd_pid}}
-      rss=$(awk '/VmRSS:/ {print $2}' /proc/${target_pid}/status 2>/dev/null)
+      rss=$(awk '/VmRSS:/ {print $2}' /proc/${target_pid}/status 2>/dev/null || true)
       [ -n "${rss}" ] && echo "${rss}" >> ${samples_log}
       sleep 10
     done
@@ -74,7 +75,7 @@ run_timed() {
 
   wait ${cmd_pid}
   local exit_code=$?
-  wait ${poller_pid} 2>/dev/null
+  wait ${poller_pid} 2>/dev/null || true
 
   local end=$(date +%s)
 
