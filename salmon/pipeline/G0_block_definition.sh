@@ -11,22 +11,24 @@
 #SBATCH -o logs/G0_block_def_%j.out
 #SBATCH -e logs/G0_block_def_%j.err
 
-BASE=/scratch/user/aguswibowo/Research/simulation_forward
-RAW=$BASE/raw_data
-MAP=$RAW/salmon_60k_map_final.txt
-NCORES=15
+# RAW_DIR and PATH (maspipeline bins) come from hpc/env.sh.
+: "${RAW_DIR:?source hpc/env.sh first}"
+RAW=$RAW_DIR
+MAP=$RAW/salmon_60k_map_final_v4.txt
+NCORES=${NCORES:-15}
+set -euo pipefail
 
-bgzip -dk $RAW/salmon_60k_pairs125bp.vcf.gz
+bgzip -dkf $RAW/salmon_60k_pairs125bp.vcf.gz
 
 echo "convert-from-vcf G0"
-./convert-from-vcf \
+convert-from-vcf \
     -i $RAW/salmon_60k_pairs125bp.vcf \
     --map $MAP \
     --genofolder $RAW/genoG0 \
     --hapfolder $RAW/haploG0
 
 echo "haplotype-hybrid MH blocks"
-./haplotype-hybrid \
+haplotype-hybrid \
     --ncores $NCORES \
     -i $RAW/haploG0/chr* \
     -m $MAP \
@@ -36,7 +38,7 @@ echo "haplotype-hybrid MH blocks"
     ld-haploblock micro --window-bp 125
 
 echo "haplotype-hybrid haplotype blocks"
-./haplotype-hybrid \
+haplotype-hybrid \
     --ncores $NCORES \
     -i $RAW/haploG0/chr* \
     -m $MAP \
@@ -45,4 +47,7 @@ echo "haplotype-hybrid haplotype blocks"
     -v \
     fixed-kb --window-bp 100000
 
+n_mh=$(($(wc -l < $RAW/mh_info_ld_haploblock_G0/stats/microhaplotype_coordinates.csv) - 1))
+n_hap=$(($(wc -l < $RAW/all_info_haploblock_G0/stats/microhaplotype_coordinates.csv) - 1))
+echo "MH blocks G0: $n_mh | HAP blocks G0: $n_hap" | tee $RAW/G0_CHECK.txt
 echo "Done MH pipeline G0"

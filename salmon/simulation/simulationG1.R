@@ -5,15 +5,22 @@ suppressPackageStartupMessages({
 })
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BASE        <- "/scratch/user/aguswibowo/Research/simulation_forward/raw_data"
-OUT         <- "/scratch/user/aguswibowo/Research/simulation_forward/output_G1"
-VCF_FILE    <- file.path(BASE, "salmon_60k_pairs125bp.vcf")
-MH_STATS    <- file.path(BASE, "mh_info_ld_haploblock_G0/stats")
-HAP_STATS   <- file.path(BASE, "all_info_haploblock_G0/stats")
+CODE        <- Sys.getenv("CODE")
+RAW_DIR     <- Sys.getenv("RAW_DIR")
+OUT         <- file.path(Sys.getenv("RUN_ROOT"), "salmon", "output_G1")
+stopifnot(nzchar(CODE), nzchar(RAW_DIR), nzchar(Sys.getenv("RUN_ROOT")))
+source(file.path(CODE, "salmon", "simulation", "sim_helpers.R"))
+source(file.path(CODE, "common", "manifest.R"))
+VCF_FILE    <- file.path(RAW_DIR, "salmon_60k_pairs125bp.vcf.gz")
+MH_STATS    <- file.path(RAW_DIR, "mh_info_ld_haploblock_G0/stats")
+HAP_STATS   <- file.path(RAW_DIR, "all_info_haploblock_G0/stats")
 
 args        <- commandArgs(trailingOnly = TRUE)
 ITER        <- as.integer(args[1])
-N_OFF_FAM   <- 25
+N_FAM_PHENO <- 25L   # phenotyped reference offspring per family
+N_FAM_CAND  <- 10L   # unphenotyped selection candidates per family (Delomas et al. 2024)
+N_OFF_FAM   <- N_FAM_PHENO + N_FAM_CAND
+CM_PER_MB   <- 1     # uniform recombination rate
 N_QTL       <- 100
 H2          <- 0.3
 
@@ -41,14 +48,13 @@ haplo_mat <- do.call(cbind, lapply(1:ncol(gt), function(i) {
 # Genotype as-is: the panel already carries natural rare variants (MAF < 0.05).
 
 gen_map      <- data.frame(chr = as.integer(vcf@fix[, "CHROM"]),
-                            pos = as.integer(vcf@fix[, "POS"]) / 1e6)
+                            pos = as.integer(vcf@fix[, "POS"]))
 n_ind_vcf    <- ncol(gt)
 chrs_ordered <- sort(unique(gen_map$chr))
 
-genMap_list <- lapply(chrs_ordered, function(c) {
-  p <- gen_map$pos[gen_map$chr == c]
-  p - min(p)
-})
+# Morgans at CM_PER_MB (previous version used Mb as Morgans, i.e. 100 cM/Mb)
+genMap_list <- build_gen_map(gen_map$chr, gen_map$pos, CM_PER_MB)
+map_length_M <- sum(vapply(genMap_list, max, numeric(1)))
 
 haplo_list <- lapply(chrs_ordered, function(c) {
   snp_idx <- which(gen_map$chr == c)
@@ -313,14 +319,15 @@ for (iter in ITER) {
   G1 <- mergePops(G1_list)
 
   n_G1    <- G1@nInd
-  fam_ids <- rep(seq_len(nrow(crosses)), each = N_OFF_FAM)
+  fam_ids  <- rep(seq_len(nrow(crosses)), each = N_OFF_FAM)
+  pop_type <- population_type_vector(nrow(crosses), N_FAM_PHENO, N_FAM_CAND)
   ind_ids <- sprintf("iter%d_gen1_fam%03d_ind%02d",
                     iter, fam_ids, sequence(rep(N_OFF_FAM, nrow(crosses))))
 
   pedigree_g1 <- tibble(
     individual_id   = ind_ids,
     generation      = 1,
-    population_type = "reference",
+    population_type = pop_type,
     mother_id       = rep(sprintf("founder_%d", crosses$dam),  each = N_OFF_FAM),
     father_id       = rep(sprintf("founder_%d", crosses$sire), each = N_OFF_FAM),
     iteration       = iter,
@@ -334,7 +341,7 @@ for (iter in ITER) {
   colnames(dosage) <- snp_meta$snp_id
   rownames(dosage) <- ind_ids
   all_geno[[iter]] <- as_tibble(dosage, rownames = "ID") %>%
-    mutate(generation = 1, population_type = "reference", .after = "ID")
+    mutate(generation = 1, population_type = pop_type, .after = "ID")
 
   # Phased haplotypes G1: transpose to n_snp × (2*n_ind) for calc_tbv_block
   haplo_mat_g1 <- t(pullSegSiteHaplo(G1, simParam = SP))
@@ -353,6 +360,8 @@ for (iter in ITER) {
     var_e <- var(tbv) * (1 - h2) / h2
     tbv + rnorm(length(tbv), 0, sqrt(var_e))
   }
+  # TBV scaling, residual variance and h2 use all 1,400 G1 individuals;
+  # candidate phenotypes are kept for audit only (never used for fitting).
   make_pheno_df <- function(tbv, ind_ids, iter, fam_ids, h2 = H2) {
     pheno   <- sim_pheno(tbv, h2)
     h2_real <- var(tbv) / var(pheno)
@@ -360,7 +369,7 @@ for (iter in ITER) {
            tbv             = tbv,
            phenotype       = pheno,
            generation      = 1,
-           population_type = "reference",
+           population_type = pop_type,
            iteration       = iter,
            family_id       = fam_ids,
            h2_realized     = h2_real)
@@ -538,6 +547,8 @@ summary_lines <- c(
   sprintf("ITER         : %d",   ITER),
   sprintf("N_QTL        : %d",   N_QTL),
   sprintf("H2_target    : %.2f", H2),
+  sprintf("Map          : %.1f cM/Mb | length %.2f M", CM_PER_MB, map_length_M),
+  sprintf("G1 per family: %d reference + %d candidate", N_FAM_PHENO, N_FAM_CAND),
   sprintf("N_founders   : %d",   founderPop@nInd),
   sprintf("N_chr        : %d",   n_chr),
   sprintf("N_SNP_total  : %d",   n_snp),
@@ -554,5 +565,11 @@ summary_lines <- c(
   sprintf("S6: %.4f", unique(all_pheno$S6[[ITER]]$h2_realized))
 )
 writeLines(summary_lines, file.path(ITER_DIR, "simulation_summary.txt"))
+
+write_manifest(c(VCF_FILE, MH_STATS, HAP_STATS), file.path(ITER_DIR, "manifest_inputs.tsv"), "input")
+write_manifest(ITER_DIR, file.path(ITER_DIR, "manifest_outputs.tsv"), "output")
+log_run_context(list(ITER = ITER, N_FAM_PHENO = N_FAM_PHENO, N_FAM_CAND = N_FAM_CAND,
+                     CM_PER_MB = CM_PER_MB, N_QTL = N_QTL, H2 = H2, VCF_FILE = VCF_FILE,
+                     map_length_M = map_length_M), ITER_DIR)
 
 cat("Output written to", OUT, "\n")

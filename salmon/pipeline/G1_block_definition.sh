@@ -14,19 +14,17 @@
 
 set -euo pipefail
 
-module load anaconda3/2023.09-0
-source activate microhaplotype
-module load beagle/5.4.22jul22.46e-java-11
+# Environment (modules, RUN_ROOT, RAW_DIR, PATH with maspipeline bins) comes
+# from hpc/env.sh, sourced by hpc/salmon_02_blocks.slurm.
+: "${RUN_ROOT:?source hpc/env.sh first}" "${RAW_DIR:?source hpc/env.sh first}"
 
-cd /scratch/user/aguswibowo/Research/simulation_forward
-
-BASE=/scratch/user/aguswibowo/Research/simulation_forward
+BASE=${RUN_ROOT}/salmon
 OUTDIR=${BASE}/output_G1
-NCORES=20
-MAP=${BASE}/raw_data/salmon_60k_map_final.txt
-REF_VCF=${BASE}/raw_data/salmon_60k_pairs125bp.vcf.gz
+NCORES=${NCORES:-20}
+MAP=${RAW_DIR}/salmon_60k_map_final_v4.txt
+REF_VCF=${RAW_DIR}/salmon_60k_pairs125bp.vcf.gz
 
-ITER=$(printf "%02d" ${SLURM_ARRAY_TASK_ID})
+ITER=$(printf "%02d" "${1:-${SLURM_ARRAY_TASK_ID}}")
 ITER_DIR=${OUTDIR}/iter${ITER}
 
 # ── Runtime + resource CSV ────────────────────────────────────────────────────
@@ -103,7 +101,7 @@ ITER_START=$(date +%s)
 echo "Starting MH pipeline iter=${ITER}"
 
 echo "Step 2a: convert-to-vcf iter=${ITER}"
-run_timed "convert-to-vcf" ./convert-to-vcf \
+run_timed "convert-to-vcf" convert-to-vcf \
     -i ${ITER_DIR}/geno_G1.csv \
     -m ${MAP} \
     -o ${ITER_DIR}/geno_G1.vcf \
@@ -119,7 +117,7 @@ mv ${ITER_DIR}/geno_G1.vcf.tmp ${ITER_DIR}/geno_G1.vcf
 rm -f ${CONTIG_HEADER}
 
 echo "Step 2b: BEAGLE phasing iter=${ITER}"
-run_timed "beagle" java -Xmx50g -jar ${EBROOTBEAGLE}/beagle.jar \
+run_timed "beagle" java -Xmx50g -jar ${BEAGLE_JAR:-${EBROOTBEAGLE}/beagle.jar} \
     gt=${ITER_DIR}/geno_G1.vcf \
     nthreads=${NCORES} \
     out=${ITER_DIR}/geno_G1_phased
@@ -127,7 +125,7 @@ run_timed "beagle" java -Xmx50g -jar ${EBROOTBEAGLE}/beagle.jar \
 gunzip -f ${ITER_DIR}/geno_G1_phased.vcf.gz   # -f: overwrite .vcf from a failed run
 
 echo "Step 2c: convert-from-vcf iter=${ITER}"
-run_timed "convert-from-vcf" ./convert-from-vcf \
+run_timed "convert-from-vcf" convert-from-vcf \
     -i ${ITER_DIR}/geno_G1_phased.vcf \
     --map ${MAP} \
     --genofolder ${ITER_DIR}/genoG1 \
@@ -162,7 +160,7 @@ run_timed_retry() {
 
 echo "Step 2d: haplotype-hybrid MH blocks iter=${ITER}"
 mkdir -p ${ITER_DIR}/mh_info_ld_haploblock
-run_timed_retry "haplotype-hybrid_mh" ./haplotype-hybrid \
+run_timed_retry "haplotype-hybrid_mh" haplotype-hybrid \
     --ncores ${NCORES} \
     -i ${ITER_DIR}/haploG1/chr* \
     -m ${MAP} \
@@ -172,7 +170,7 @@ run_timed_retry "haplotype-hybrid_mh" ./haplotype-hybrid \
     ld-haploblock micro --window-bp 125
 
 echo "Step 2e: haplotype-hybrid ALL blocks iter=${ITER}"
-run_timed_retry "haplotype-hybrid_hap" ./haplotype-hybrid \
+run_timed_retry "haplotype-hybrid_hap" haplotype-hybrid \
     --ncores ${NCORES} \
     -i ${ITER_DIR}/haploG1/chr* \
     -m ${MAP} \
@@ -188,7 +186,7 @@ record_step "TOTAL" ${ITER_START} ${ITER_END} 0 0 0 0 0
 # Check G0 QTL block structure survives in G1-discovered blocks: % intact
 # (all causal SNPs in one G1 block) vs fragmented.
 # Writes ${ITER_DIR}/qtl_block_intactness.rds.
-INTACT_CHECK=${BASE}/MicrohapsSel/simulation/post-simulation/check_qtl_block_intactness.R
+INTACT_CHECK=${CODE}/salmon/tools/check_qtl_block_intactness.R   # optional; skipped if absent
 if [ -f "${INTACT_CHECK}" ]; then
   echo "Step 3: QTL block intactness check iter=${ITER}"
   Rscript "${INTACT_CHECK}" "${SLURM_ARRAY_TASK_ID}" "${OUTDIR}" || \
