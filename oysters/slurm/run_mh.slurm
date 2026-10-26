@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --account=a_zenger
+#SBATCH --account=a_jcu_hpc
 #SBATCH --array=1-7
 #SBATCH -o logs/masreml_pmx_mh_29m_%A_%a.out
 #SBATCH -e logs/masreml_pmx_mh_29m_%A_%a.err

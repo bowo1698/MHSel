@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=22
 #SBATCH --mem=64G
 #SBATCH --time=48:00:00
-#SBATCH --account=a_zenger
+#SBATCH --account=a_jcu_hpc
 #SBATCH --array=1-20
 #SBATCH -o logs/mh_G1_%A_%a.out
 #SBATCH -e logs/mh_G1_%A_%a.err

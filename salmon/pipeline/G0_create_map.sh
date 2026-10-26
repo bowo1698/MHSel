@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --account=a_zenger
+#SBATCH --account=a_jcu_hpc
 #SBATCH -o logs/G0_create_map_%j.out
 #SBATCH -e logs/G0_create_map_%j.err
 
