@@ -51,9 +51,15 @@ qtl_hap_blocks <- readRDS(file.path(config$qtl_dir, "qtl_hap_blocks.rds"))
 snp_meta       <- readRDS(file.path(config$qtl_dir, "snp_meta.rds"))
 dropped_snps <- character(0)
 if (isTRUE(config$exclude_causal)) {
-  dropped_snps <- intersect(causal_snp_ids(sc, qtl), names(geno))
+  # symmetric with the MH panel: causal SNPs + all SNPs of MH blocks containing one
+  sel <- read_csv(file.path(data_dir, "mh_info_ld_haploblock/stats/snp_selection_detailed.csv"),
+                  show_col_types = FALSE)
+  smi <- snp_meta %>% group_by(chr) %>% mutate(snp_index = row_number() - 1L) %>% ungroup()
+  causal <- causal_snp_ids(sc, qtl)
+  dropped_snps <- intersect(causal_neighbourhood_snps(causal, sel, smi), names(geno))
   geno <- drop_causal_snps(geno, dropped_snps)
-  cat(sprintf("nocausal: dropped %d causal SNPs\n", length(dropped_snps)))
+  stopifnot(!any(causal %in% names(geno)))
+  cat(sprintf("nocausal: dropped %d SNPs (%d causal + block-mates)\n", length(dropped_snps), length(causal)))
 }
 
 # QC, imputation and frequencies from the reference set only
@@ -107,7 +113,7 @@ for (model in c("gblup", "bayesR")) {
     md$meta$p <- ncol(inputs$W_train)
     saveRDS(md, file.path(out_dir, model, "mcmc_diag.rds"))
   }
-  preds <- candidate_results(fit, model, meta)
+  preds <- candidate_results(fit, model, meta) %>% mutate(n_dropped_snps = length(dropped_snps), n_dropped_blocks = NA_integer_)
   saveRDS(list(predictions = preds, markers = markers, markers_full = markers,
                qtl_recovery = qrec, qtl_recovery_full = qrec,
                diagnostics_fit = if (model == "bayesR") fit$bayesR$diagnostics,

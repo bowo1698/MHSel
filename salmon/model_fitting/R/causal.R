@@ -37,3 +37,12 @@ translate_block_ids <- function(block_ids, coords) {
   stopifnot(!anyNA(out))
   out
 }
+
+# SNPs removed from the SNP panel in "nocausal": causal SNPs plus all SNPs of MH
+# blocks containing one, so both panels lose the same sequence information.
+causal_neighbourhood_snps <- function(causal_ids, snp_selection, snp_meta_idx) {
+  sel <- merge(snp_selection[, c("block_id", "chr", "snp_index")],
+               snp_meta_idx[, c("chr", "snp_index", "snp_id")], by = c("chr", "snp_index"))
+  hit <- unique(sel$block_id[sel$snp_id %in% causal_ids])
+  union(causal_ids, sel$snp_id[sel$block_id %in% hit])
+}

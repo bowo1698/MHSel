@@ -62,8 +62,12 @@ if (isTRUE(config$exclude_causal)) {
   sel <- read_csv(file.path(data_dir, "mh_info_ld_haploblock/stats/snp_selection_detailed.csv"),
                   show_col_types = FALSE)
   smi <- snp_meta %>% group_by(chr) %>% mutate(snp_index = row_number() - 1L) %>% ungroup()
-  hap_geno <- drop_causal_mh_blocks(hap_geno, sel, smi, causal_snp_ids(sc, qtl))
+  causal   <- causal_snp_ids(sc, qtl)
+  hap_geno <- drop_causal_mh_blocks(hap_geno, sel, smi, causal)
   dropped_blocks <- attr(hap_geno, "dropped_blocks")
+  # guard: no remaining hap column may belong to a block holding a causal SNP
+  stopifnot(!any(names(hap_geno) %in% c(dropped_blocks, paste0(dropped_blocks, "_1"))),
+            length(dropped_blocks) == length(unique(sel$block_id[sel$snp_id %in% causal])))
   cat(sprintf("nocausal: dropped %d MH blocks containing causal SNPs\n", length(dropped_blocks)))
 }
 
@@ -114,7 +118,7 @@ for (model in c("gblup", "bayesR")) {
     md$meta$p <- ncol(inputs$W_train)
     saveRDS(md, file.path(out_dir, model, "mcmc_diag.rds"))
   }
-  preds <- candidate_results(fit, model, meta)
+  preds <- candidate_results(fit, model, meta) %>% mutate(n_dropped_snps = NA_integer_, n_dropped_blocks = length(dropped_blocks))
   saveRDS(list(predictions = preds, markers = markers, markers_full = markers,
                qtl_recovery = qrec, qtl_recovery_full = qrec,
                diagnostics_fit = if (model == "bayesR") fit$bayesR$diagnostics,

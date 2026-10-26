@@ -42,32 +42,16 @@ run_gblup <- function(matrices, split, config) {
 
   pred_train <- as.numeric(gblup_fit$total_gebv) + mu_hat
 
-  # Test-set h2 from an independent fit on test individuals
+  # Candidate GEBV = BLUP G_te,tr (G_tr + lambda I)^-1 (y - mu). masreml's
+  # predict(G_full = ...) solves against the training BLUP instead of (y - mu),
+  # shrinking candidates twice (review C1); computed here directly.
+  # Candidate phenotypes are never used (no h2 fit on the test set).
   h2_test_gblup <- NA_real_
-  if (has_test && nrow(pheno_test) > 1) {
-    h2_test_gblup <- tryCatch({
-      G_test_block  <- G_full[test_ids, test_ids, drop = FALSE]
-      y_test_named  <- setNames(pheno_test$y, pheno_test$individual_id)
-      fit_test <- masreml(
-        y      = y_test_named,
-        G      = setNames(list(G_test_block), g_label),
-        method = "AI",
-        tol    = 1e-6
-      )
-      h2_raw <- as.numeric(fit_test$varcomp$h2[g_label])
-      if (is.na(h2_raw) || h2_raw < 0 || h2_raw > 1) NA_real_ else h2_raw
-    }, error = function(e) NA_real_)
-  }
-
-  # Test prediction via masreml S3 predict (Cholesky-based)
   if (has_test) {
-    gblup_pred <- predict(
-      gblup_fit,
-      G_full    = setNames(list(G_full), g_label),
-      train_ids = train_ids,
-      test_ids  = test_ids
-    )
-    pred_test <- as.numeric(gblup_pred$GEBV) + mu_hat
+    lambda    <- sigma2_e / sigma2_g
+    r_train   <- pheno_train$y[match(train_ids, pheno_train$individual_id)] - mu_hat
+    pred_test <- as.vector(G_full[test_ids, train_ids, drop = FALSE] %*%
+                             solve(G_train + diag(lambda, nrow(G_train)), r_train)) + mu_hat
   } else {
     pred_test <- numeric(0)
   }
