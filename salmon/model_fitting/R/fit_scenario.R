@@ -8,12 +8,21 @@ grm_summary <- function(A) {
        mean_offdiag = mean(off), sd_offdiag = sd(off))
 }
 
-# SNP: BayesR W = centred + globally scaled (as W_ah); GRM = VanRaden 1.
-# Frequencies and scale come from the training (reference) set only.
-build_snp_inputs <- function(X_train, X_test, allele_info = NULL) {
+# SNP: BayesR W = centred + globally scaled (as W_ah) or per-column z-score
+# (encoding = "zscore"); GRM = VanRaden 1 either way.
+# Frequencies, scale and sd come from the training (reference) set only.
+build_snp_inputs <- function(X_train, X_test, allele_info = NULL, encoding = c("global", "zscore")) {
+  encoding <- match.arg(encoding)
   ctr <- center_snp(X_train); cte <- center_snp(X_test, ctr$freq)
   k   <- 2 * sum(ctr$freq * (1 - ctr$freq))
-  str_ <- scale_marker_w(ctr$W); ste <- scale_marker_w(cte$W, str_$scale)
+  if (encoding == "global") {
+    str_ <- scale_marker_w(ctr$W); ste <- scale_marker_w(cte$W, str_$scale)
+  } else {
+    ztr <- masbayes::construct_snp_matrix(X_train, encoding = "zscore")
+    zte <- masbayes::construct_snp_matrix(X_test, encoding = "zscore", ref_freq = ztr$freq, ref_sd = ztr$sd)
+    str_ <- list(W = ztr$W, scale = NA_real_); ste <- list(W = zte$W)
+    dimnames(str_$W) <- dimnames(X_train); dimnames(ste$W) <- dimnames(X_test)
+  }
   A_train    <- tcrossprod(ctr$W) / k
   A_combined <- tcrossprod(rbind(ctr$W, cte$W)) / k
   if (is.null(allele_info))

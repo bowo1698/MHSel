@@ -78,7 +78,8 @@ snp_map <- read_tsv(config$snp_map_file, show_col_types = FALSE) %>%
 allele_info <- snp_map[match(colnames(X_train), snp_map$snp_id), ] %>%
   transmute(allele_id = snp_id, freq = colMeans(X_train) / 2, block = snp_id, allele = 1L,
             chr, start_pos = position, end_pos = position, n_snps = 1L, global_block_id = snp_id)
-inputs <- build_snp_inputs(X_train, X_test, as.data.frame(allele_info))
+inputs <- build_snp_inputs(X_train, X_test, as.data.frame(allele_info),
+                           encoding = bayesr_prior("gaussian", config$prior_set %||% "erbe", "snp")$snp_encoding)
 cat(sprintf("W ready: %d train x %d SNPs | %d candidates\n",
             nrow(inputs$W_train), ncol(inputs$W_train), nrow(inputs$W_test)))
 
