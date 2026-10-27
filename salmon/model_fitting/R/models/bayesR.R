@@ -14,7 +14,7 @@ run_bayesR <- function(matrices, split, gblup_varcomp, config, fold = 0,
 
   # Identical prior and kernel for SNP and MH (common/bayesr_prior.R)
   if (!exists("bayesr_prior")) source(file.path(config$common_dir, "bayesr_prior.R"))
-  prior         <- bayesr_prior("gaussian")
+  prior         <- bayesr_prior("gaussian", config$prior_set %||% "erbe")
   pi_vec        <- prior$pi
   sigma2_ah     <- gblup_varcomp$sigma2_g
   sigma2_e_init <- gblup_varcomp$sigma2_e
