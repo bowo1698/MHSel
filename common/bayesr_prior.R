@@ -7,16 +7,18 @@
 # set "v1": shared pi and classes 0/1e-3/1e-2/1e-1 x sigma2_g; each marker keeps its
 #   masbayes kernel defaults: SNP = "snp" kernel, z-score W, df -1/2, sigma2_ah = var(y)/4,
 #   sigma2_e = var(y)/2; MH = "auto" (multiallelic) kernel, W_ah, df 10/10, sigma2 from GBLUP.
-bayesr_prior <- function(response = c("gaussian", "binary"), set = c("erbe", "v1"), marker = c("mh", "snp")) {
+# set "v2": as v1, but SNP variance classes 0/1e-4/1e-3/1e-2 (MH identical to v1).
+bayesr_prior <- function(response = c("gaussian", "binary"), set = c("erbe", "v1", "v2"), marker = c("mh", "snp")) {
   response <- match.arg(response); set <- match.arg(set); marker <- match.arg(marker)
   p <- list(pi = if (response == "gaussian") c(.90, .05, .03, .02) else c(.995, .003, .001, .001),
             variance_class = c(0, 1e-4, 1e-3, 1e-2),  # x sigma2_g
             a0_e = 10, a0_g = 10, marker_type = "multiallelic",
             sigma2_init = "gblup", snp_encoding = "global")
-  if (set == "v1") {
+  if (set %in% c("v1", "v2")) {
     p$variance_class <- c(0, 1e-3, 1e-2, 1e-1)
     p$marker_type <- if (marker == "snp") "snp" else "auto"
     if (marker == "snp") p[c("a0_e", "a0_g", "sigma2_init", "snp_encoding")] <- list(-1, 2, "vary", "zscore")
+    if (set == "v2" && marker == "snp") p$variance_class <- c(0, 1e-4, 1e-3, 1e-2)
   }
   p
 }
