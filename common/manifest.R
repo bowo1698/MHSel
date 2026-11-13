@@ -41,7 +41,7 @@ verify_manifest <- function(manifest_tsv, base_dir) {
 }
 
 log_run_context <- function(config, out_dir) {
-  rev_file <- file.path(Sys.getenv("CODE", Sys.getenv("MHSEL2_ROOT", ".")), "REVISION")
+  rev_file <- file.path(Sys.getenv("CODE", Sys.getenv("MHSEL_ROOT", ".")), "REVISION")
   pkgs <- c("masbayes", "masreml", "AlphaSimR")
   vers <- vapply(pkgs, function(p)
     tryCatch(as.character(packageVersion(p)), error = function(e) "not installed"), "")
