@@ -4,10 +4,9 @@
 #SBATCH --qos=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=22
-#SBATCH --mem=64G
-#SBATCH --time=48:00:00
-#SBATCH --account=a_jcu_hpc
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+#SBATCH --time=12:00:00
 #SBATCH --array=1-20
 #SBATCH -o logs/mh_G1_%A_%a.out
 #SBATCH -e logs/mh_G1_%A_%a.err

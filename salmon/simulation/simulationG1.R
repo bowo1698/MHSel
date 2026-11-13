@@ -18,7 +18,7 @@ HAP_STATS   <- file.path(RAW_DIR, "all_info_haploblock_G0/stats")
 args        <- commandArgs(trailingOnly = TRUE)
 ITER        <- as.integer(args[1])
 N_FAM_PHENO <- 20L   # phenotyped reference offspring per family
-N_FAM_CAND  <- 5L    # unphenotyped selection candidates per family (Delomas et al. 2024); 25 per family as before
+N_FAM_CAND  <- 5L    # unphenotyped selection candidates per family
 N_OFF_FAM   <- N_FAM_PHENO + N_FAM_CAND
 CM_PER_MB   <- 1     # uniform recombination rate
 N_QTL       <- 100

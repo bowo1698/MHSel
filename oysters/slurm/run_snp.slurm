@@ -4,10 +4,9 @@
 #SBATCH --partition=general
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 #SBATCH --time=12:00:00
-#SBATCH --account=a_jcu_hpc
 #SBATCH --array=1-28
 #SBATCH -o logs/masreml_pmx_snp_29m_%A_%a.out
 #SBATCH -e logs/masreml_pmx_snp_29m_%A_%a.err
@@ -70,7 +69,7 @@ if [ "$RESPONSE" = "binary" ]; then
   VC="c(0, 0.0001, 0.001, 0.01)"
 else
   PI="c(0.95,0.02,0.02,0.01)"
-  VC="c(0, 0.001, 0.01, 0.1)"
+  VC="c(0, 0.0001, 0.001, 0.01)"
 fi
 
 OUT_DIR="${BASE}/prediction_oysters/output4/pmx_snp_29m_iter${REP}/${PANEL}/${TRAIT}"
